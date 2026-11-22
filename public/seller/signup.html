@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open your shop - Bazaar Lane</title>
+  <link rel="stylesheet" href="/kit/components/bundle.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" data-customer-header></header>
+
+  <main class="narrow">
+    <h1>Open your shop</h1>
+    <p class="muted">After you sign up, the admin checks your shop. You can add products as soon as it is approved.</p>
+
+    <form id="signup-form" class="card" novalidate>
+      <div class="field">
+        <label for="shop-name">Shop name</label>
+        <input id="shop-name" type="text" autocomplete="organization" maxlength="40" required>
+        <div class="hint">2 to 40 characters. Customers will see this name.</div>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" maxlength="100" required>
+        <div class="hint">You log in with this email.</div>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="new-password" maxlength="100" required>
+        <div class="hint">At least 8 characters.</div>
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" required>
+        <div class="hint">10 digits, without +91.</div>
+      </div>
+      <div id="message" class="message" role="alert"></div>
+      <button type="submit" class="wide">Sign up</button>
+    </form>
+
+    <p>Already have a shop? <a href="/login.html">Log in</a></p>
+  </main>
+
+  <footer class="site-footer" data-customer-footer></footer>
+
+  <script src="/vendor/react.js" defer></script>
+  <script src="/vendor/react-dom.js" defer></script>
+  <script src="/kit/components/bundle.js" defer></script>
+  <script src="/common.js" defer></script>
+  <script src="/kit.js" defer></script>
+  <script src="/seller/signup.js" defer></script>
+</body>
+</html>

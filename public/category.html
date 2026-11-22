@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Category - Bazaar Lane</title>
+  <meta name="description" content="Hand-made goods from independent shops.">
+  <link rel="stylesheet" href="/kit/components/bundle.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" data-customer-header></header>
+
+  <main class="shop-main">
+    <div id="message" class="message" role="alert"></div>
+
+    <section id="category" class="hidden">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a> <span aria-hidden="true">›</span> <span id="crumb-name">Category</span></nav>
+      <h1 id="category-name">Category</h1>
+      <nav id="categories" class="chips" aria-label="Categories"></nav>
+      <p id="view-links" class="view-links small"></p>
+      <div id="carousel-host"></div>
+      <div id="list" class="list-layout hidden">
+        <div id="filters" class="filter-panel"></div>
+        <section aria-label="Products">
+          <p id="result-count" class="muted" role="status"></p>
+          <div id="products" class="product-grid"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="not-found" class="card status-card hidden">
+      <div class="status-icon" data-icon="alert" aria-hidden="true"></div>
+      <h2>This category does not exist</h2>
+      <p><a href="/search">See all products</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-customer-footer></footer>
+
+  <script src="/vendor/react.js" defer></script>
+  <script src="/vendor/react-dom.js" defer></script>
+  <script src="/kit/components/bundle.js" defer></script>
+  <script src="/common.js" defer></script>
+  <script src="/kit.js" defer></script>
+  <script src="/carousel.js" defer></script>
+  <script src="/listing.js" defer></script>
+  <script src="/category.js" defer></script>
+</body>
+</html>

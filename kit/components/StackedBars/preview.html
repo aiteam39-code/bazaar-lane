@@ -1,0 +1,25 @@
+<!-- @dsCard group="Seller tools" height=380 subtitle="Scrub a bar to see its breakdown" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StackedBars — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+var series = [ { key: 'market', label: 'Marketplace', tone: 1 }, { key: 'insta', label: 'Instagram', tone: 2 }, { key: 'repeat', label: 'Repeat buyers', tone: 3 } ];
+function bar(label, m, i, r) { return { label: label, values: { market: m, insta: i, repeat: r } }; }
+var datasets = {
+  week: { label: 'Week', caption: 'last 7 days', bars: [ bar('Mon', 12400, 3100, 2200), bar('Tue', 9800, 4200, 1800), bar('Wed', 15200, 2600, 3100), bar('Thu', 11100, 5300, 2400), bar('Fri', 18900, 6100, 4200), bar('Sat', 22400, 8800, 5100), bar('Sun', 16300, 7200, 3900) ] },
+  day: { label: 'Day', caption: 'today', bars: [ bar('9a', 1200, 300, 200), bar('12p', 3400, 900, 600), bar('3p', 2600, 1400, 500), bar('6p', 4800, 2100, 900), bar('9p', 3900, 2600, 700) ] }
+};
+function Demo() { return h(IK.StackedBars, { datasets: datasets, series: series, title: 'Revenue', height: 190 }); }
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

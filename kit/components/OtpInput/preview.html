@@ -1,0 +1,31 @@
+<!-- @dsCard group="Cart & checkout" height=220 subtitle="Paste, autofill, shake on a wrong code" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OtpInput — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  var a = useState('idle'), status = a[0], setStatus = a[1];
+  var b = useState(''), code = b[0], setCode = b[1];
+  var msg = { idle: 'Sent to +91 98\u2022\u2022\u2022\u2022 4210. Demo code: 246810', verifying: 'Checking\u2026', error: 'That code didn\u2019t match. 2 tries left.', success: 'Verified. Taking you to payment.' }[status];
+  return h('div', { style: { display: 'grid', gap: 'var(--space-3)' } },
+    h(IK.OtpInput, {
+      value: code, status: status, message: msg,
+      onChange: function (c) { setCode(c); if (status === 'error') setStatus('idle'); },
+      onComplete: function (c) { setStatus('verifying'); setTimeout(function () { setStatus(c === '246810' ? 'success' : 'error'); }, 900); }
+    }),
+    status === 'success' ? h('div', null, h('button', { className: 'ik-ghost', onClick: function () { setCode(''); setStatus('idle'); } }, 'Reset')) : null
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

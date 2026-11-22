@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout - Bazaar Lane</title>
+  <meta name="description" content="Hand-made goods from independent shops.">
+  <link rel="stylesheet" href="/kit/components/bundle.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" data-customer-header></header>
+
+  <main class="shop-main narrow-wide">
+    <ol class="steps" aria-label="Checkout steps"><li>Bag</li><li class="is-current" aria-current="step">Details</li><li>Pay</li><li>Done</li></ol>
+    <p class="back-link"><a href="/cart.html">← Back to the bag</a></p>
+    <h1>Checkout</h1>
+    <div id="message" class="message" role="alert"></div>
+
+    <section id="summary" class="card hidden" aria-labelledby="summary-title">
+      <h2 id="summary-title">Your order</h2>
+      <div id="summary-groups"></div>
+      <div class="total-row grand"><span>Grand total</span><span id="summary-total"></span></div>
+    </section>
+
+    <form id="checkout-form" class="card hidden" novalidate>
+      <h2>Your details</h2>
+      <div class="field">
+        <label for="customer-name">Name</label>
+        <input id="customer-name" type="text" autocomplete="name" maxlength="60" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" required>
+        <div class="hint">10 digits, without +91. The shops call this number about delivery.</div>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" maxlength="100" required>
+      </div>
+      <div class="field">
+        <label for="address">Delivery address</label>
+        <textarea id="address" rows="3" maxlength="300" autocomplete="street-address" required></textarea>
+        <div class="hint">House, street, area, city and PIN code.</div>
+      </div>
+      <fieldset>
+        <legend>How will you pay?</legend>
+        <label class="choice"><input type="radio" name="payment" value="online" id="pay-online" checked> Pay online (UPI or card)</label>
+        <label class="choice"><input type="radio" name="payment" value="cod" id="pay-cod"> Cash on delivery</label>
+      </fieldset>
+      <section id="phone-check" class="phone-check hidden" aria-labelledby="phone-check-title">
+        <h3 id="phone-check-title">Check your phone</h3>
+        <p class="small">For cash on delivery we send a 6-digit code to your phone, so the shops know the order is real.</p>
+        <button type="button" id="send-code" class="secondary">Send code</button>
+        <p id="code-sent" class="small hidden" role="status"></p>
+        <p id="test-sms" class="reason small hidden"></p>
+        <div id="otp" class="hidden"></div>
+      </section>
+      <div id="form-message" class="message" role="alert"></div>
+      <button type="submit" id="place-order" class="accent wide">Place order</button>
+      <p class="muted small">You get a private tracking link straight away. Nobody needs an account. Online payments here are in test mode: no real money moves.</p>
+    </form>
+
+    <section id="cart-empty" class="card status-card hidden">
+      <div class="status-icon" data-icon="bag" aria-hidden="true"></div>
+      <h2>Your bag is empty</h2>
+      <p><a href="/">Start shopping</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-customer-footer></footer>
+
+  <script src="/vendor/react.js" defer></script>
+  <script src="/vendor/react-dom.js" defer></script>
+  <script src="/kit/components/bundle.js" defer></script>
+  <script src="/common.js" defer></script>
+  <script src="/kit.js" defer></script>
+  <script src="/checkout.js" defer></script>
+</body>
+</html>

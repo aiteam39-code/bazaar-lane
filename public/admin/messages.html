@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Messages - Bazaar Lane</title>
+  <link rel="stylesheet" href="/kit/components/bundle.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" data-staff-header="admin"></header>
+
+  <main>
+    <h1>Messages</h1>
+    <p class="muted">From the contact form. We promise a reply within 2 working days: reply by email, then press Handled.</p>
+    <div id="message" class="message" role="status"></div>
+    <div id="message-list"></div>
+    <p id="no-messages" class="muted hidden">No messages yet.</p>
+  </main>
+
+  <script src="/vendor/react.js" defer></script>
+  <script src="/vendor/react-dom.js" defer></script>
+  <script src="/kit/components/bundle.js" defer></script>
+  <script src="/common.js" defer></script>
+  <script src="/kit.js" defer></script>
+  <script src="/admin/messages.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!-- @dsCard group="Primitives" height=170 subtitle="Odometer digits for totals and counts" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RollingNumber — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  var a = useState(124580), total = a[0], setTotal = a[1];
+  var b = useState(3), bag = b[0], setBag = b[1];
+  return h('div', { className: 'ik-row', style: { justifyContent: 'space-between' } },
+    h('div', null,
+      h('div', { style: { font: '500 13px/18px var(--font-sans)', color: 'var(--ink-muted)' } }, 'Revenue this week'),
+      h(IK.RollingNumber, { value: total, format: { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }, style: { font: '600 34px/38px var(--font-sans)', letterSpacing: '-0.02em' } })
+    ),
+    h('div', { className: 'ik-row' },
+      h('button', { className: 'ik-ghost', onClick: function () { setTotal(total + 1250); } }, '+ \u20B91,250 order'),
+      h('button', { className: 'ik-ghost', onClick: function () { setTotal(Math.round(40000 + Math.random() * 900000)); } }, 'Random total'),
+      h('button', { className: 'ik-ghost', onClick: function () { setBag(bag + 1); }, 'aria-label': 'Add one to bag' }, 'Bag',
+        h('span', { style: { display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999, background: 'var(--inverse)', color: 'var(--on-inverse)', font: '600 12px/1 var(--font-sans)' } },
+          h(IK.RollingNumber, { value: bag, animateOnMount: false })))
+    )
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

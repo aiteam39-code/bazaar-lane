@@ -1,0 +1,24 @@
+<!-- @dsCard group="Shopping" height=120 subtitle="Rolls the count; nudges at the limits" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QuantityStepper — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  return h('div', { className: 'ik-row', style: { alignItems: 'flex-start' } },
+    h(IK.QuantityStepper, { defaultValue: 1, min: 1, max: 5 }),
+    h(IK.QuantityStepper, { defaultValue: 2, min: 1, max: 9, size: 'sm', label: 'Quantity, small' })
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

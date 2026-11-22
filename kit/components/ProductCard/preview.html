@@ -1,0 +1,31 @@
+<!-- @dsCard group="Shopping" height=470 subtitle="Hover swaps the photo and slides up Quick add" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProductCard — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+var art = IK.demo.art;
+function later(ms, fail) { return new Promise(function (res, rej) { setTimeout(fail ? rej : res, ms); }); }
+var items = [
+  { title: 'Hand-thrown mug, ash glaze', vendor: 'Studio Kumhar \u00B7 Jaipur', price: 1299, compareAt: 1599, badge: 'New', images: [art('mug'), art('mug', { alt: true })] },
+  { title: 'Block-print canvas tote', vendor: 'Bagru Prints', price: 849, images: [art('tote'), art('tote', { alt: true })] },
+  { title: 'Brass and linen table lamp', vendor: 'Moradabad Metal Co.', price: 3450, compareAt: 3900, images: [art('lamp'), art('lamp', { alt: true })] },
+  { title: 'Cold-pressed mustard oil, 1 L', vendor: 'Kachi Ghani \u00B7 Alwar', price: 380, soldOut: true, images: [art('bottle')] }
+];
+function Demo() {
+  return h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(176px, 1fr))', gap: 'var(--space-4)' } },
+    items.map(function (it) { return h(IK.ProductCard, Object.assign({ key: it.title, onAdd: function () { return later(700); } }, it)); })
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

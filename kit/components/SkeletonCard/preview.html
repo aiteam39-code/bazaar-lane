@@ -1,0 +1,25 @@
+<!-- @dsCard group="Shopping" height=410 subtitle="Shimmering stand-ins shaped like product cards" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SkeletonCard — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  return h('div', { 'aria-busy': 'true' },
+    h('span', { className: 'ik-sr', role: 'status' }, 'Loading products'),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(176px, 1fr))', gap: 'var(--space-4)' } },
+      [0, 1, 2, 3].map(function (i) { return h(IK.SkeletonCard, { key: i }); }))
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shops - Bazaar Lane</title>
+  <link rel="stylesheet" href="/kit/components/bundle.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" data-staff-header="admin"></header>
+
+  <main>
+    <h1>Shops</h1>
+
+    <div class="tabs" id="tabs">
+      <button type="button" class="tab" data-tab="pending">Pending<span class="count" data-count="pending">0</span></button>
+      <button type="button" class="tab" data-tab="active">Active<span class="count" data-count="active">0</span></button>
+      <button type="button" class="tab" data-tab="suspended">Suspended<span class="count" data-count="suspended">0</span></button>
+      <button type="button" class="tab" data-tab="rejected">Rejected<span class="count" data-count="rejected">0</span></button>
+    </div>
+
+    <div id="message" class="message" role="status"></div>
+    <div id="shop-list"></div>
+    <p id="empty" class="muted hidden">No shops here.</p>
+  </main>
+
+  <script src="/vendor/react.js" defer></script>
+  <script src="/vendor/react-dom.js" defer></script>
+  <script src="/kit/components/bundle.js" defer></script>
+  <script src="/common.js" defer></script>
+  <script src="/kit.js" defer></script>
+  <script src="/admin/shops.js" defer></script>
+</body>
+</html>

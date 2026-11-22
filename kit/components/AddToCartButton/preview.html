@@ -1,0 +1,29 @@
+<!-- @dsCard group="Shopping" height=140 subtitle="Plus, spinner, tick; failure shakes" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AddToCartButton — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function later(ms, fail) { return new Promise(function (res, rej) { setTimeout(fail ? rej : res, ms); }); }
+function Demo() {
+  var s = useState(IK.sound.isEnabled()), on = s[0], setOn = s[1];
+  return h('div', { className: 'ik-row' },
+    h(IK.AddToCartButton, { onAdd: function () { return later(800); } }),
+    h(IK.AddToCartButton, { tone: 'ink', label: 'Add to bag \u00B7 \u20B91,299', onAdd: function () { return later(800); } }),
+    h(IK.AddToCartButton, { label: 'Add (fails)', onAdd: function () { return later(800, true); } }),
+    h(IK.AddToCartButton, { soldOut: true }),
+    h('button', { className: 'ik-ghost', 'aria-pressed': on, onClick: function () { if (on) IK.sound.disable(); else IK.sound.enable(); setOn(!on); } }, on ? 'Sound on' : 'Sound off')
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

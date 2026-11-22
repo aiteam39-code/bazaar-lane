@@ -1,0 +1,27 @@
+<!-- @dsCard group="Shopping" height=400 subtitle="Category panels that open toward the pointer" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CollectionAccordion — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+var art = IK.demo.art;
+var items = [
+  { title: 'Ceramics', subtitle: 'Thrown by hand in Jaipur and Khurja', image: art('mug') },
+  { title: 'Bags', subtitle: 'Block-printed canvas from Bagru', image: art('tote') },
+  { title: 'Lighting', subtitle: 'Brass from Moradabad', image: art('lamp') },
+  { title: 'Pantry', subtitle: 'Small-batch oils and spice', image: art('bottle') },
+  { title: 'Gifting', subtitle: 'Candles, boxes and cards', image: art('candle') }
+];
+function Demo() { return h(IK.CollectionAccordion, { items: items, height: 340 }); }
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

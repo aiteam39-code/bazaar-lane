@@ -1,0 +1,27 @@
+<!-- @dsCard group="Shopping" height=120 subtitle="Pops and bursts on save" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WishlistHeart — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  var s = useState(false), on = s[0], setOn = s[1];
+  return h('div', { className: 'ik-row' },
+    h(IK.WishlistHeart, { pressed: on, onChange: setOn, count: 128 + (on ? 1 : 0) }),
+    h(IK.WishlistHeart, { defaultPressed: true, label: 'Saved to wishlist' }),
+    h('div', { style: { position: 'relative', width: 96, height: 72, borderRadius: 'var(--radius-md)', background: 'url("' + IK.demo.art('candle') + '") center / cover' } },
+      h('span', { style: { position: 'absolute', top: 6, right: 6 } }, h(IK.WishlistHeart, { size: 'sm', onMedia: true, label: 'Save soy candle' })))
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!-- @dsCard group="Cart & checkout" height=130 subtitle="Asks once before it removes" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ConfirmButton — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  var s = useState(true), present = s[0], setPresent = s[1];
+  var row = { display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--surface)', border: '1px solid var(--line)', maxWidth: 520 };
+  if (!present) return h('div', { style: row },
+    h('span', { style: { flex: 1, font: '500 14px/20px var(--font-sans)', color: 'var(--ink-muted)' } }, 'Removed Block-print canvas tote.'),
+    h('button', { className: 'ik-ghost', onClick: function () { setPresent(true); } }, 'Undo'));
+  return h('div', { style: row },
+    h('img', { src: IK.demo.art('tote'), alt: '', style: { width: 48, height: 56, objectFit: 'cover', borderRadius: 8 } }),
+    h('div', { style: { flex: 1, minWidth: 0 } },
+      h('div', { style: { font: '500 14px/20px var(--font-sans)' } }, 'Block-print canvas tote'),
+      h('div', { style: { font: '600 14px/20px var(--font-sans)' } }, '\u20B9849')),
+    h(IK.ConfirmButton, { onConfirm: function () { setPresent(false); } })
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

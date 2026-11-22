@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Find my orders - Bazaar Lane</title>
+  <meta name="description" content="Hand-made goods from independent shops.">
+  <link rel="stylesheet" href="/kit/components/bundle.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header" data-customer-header></header>
+
+  <main class="shop-main narrow-wide">
+    <h1>Find my orders</h1>
+    <p>Type the email you used at checkout. We email you the private link to every order placed with it.</p>
+    <form id="find-form" class="card" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" maxlength="100" required>
+      </div>
+      <div id="find-message" class="message" role="status"></div>
+      <button type="submit" class="accent">Email me my links</button>
+    </form>
+    <p class="muted small">Orders placed in this browser are also under <a href="/orders.html">My orders</a>.</p>
+  </main>
+
+  <footer class="site-footer" data-customer-footer></footer>
+
+  <script src="/vendor/react.js" defer></script>
+  <script src="/vendor/react-dom.js" defer></script>
+  <script src="/kit/components/bundle.js" defer></script>
+  <script src="/common.js" defer></script>
+  <script src="/kit.js" defer></script>
+      <script src="/find-my-orders.js" defer></script>
+</body>
+</html>

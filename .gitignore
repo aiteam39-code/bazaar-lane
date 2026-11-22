@@ -1,0 +1,13 @@
+# Never saved in a checkpoint: the real data, uploads, backups, demo logins, keys and installed packages.
+marketplace.db
+marketplace.db-*
+*.db
+*.db-wal
+*.db-shm
+uploads/
+backups/
+DEMO_LOGINS.md
+.env
+.env.*
+node_modules/
+.DS_Store

@@ -1,0 +1,112 @@
+{
+  "manifestVersion": 3,
+  "name": "Interaction Kit",
+  "namespace": "IK",
+  "files": [
+    "components/AddToCartButton/README.md",
+    "components/CollectionAccordion/README.md",
+    "components/ConfirmButton/README.md",
+    "components/FreeShippingMeter/README.md",
+    "components/OrderTracker/README.md",
+    "components/OtpInput/README.md",
+    "components/ProductCard/README.md",
+    "components/QuantityStepper/README.md",
+    "components/RollingNumber/README.md",
+    "components/SkeletonCard/README.md",
+    "components/StackedBars/README.md",
+    "components/ToastStack/README.md",
+    "components/VariantPicker/README.md",
+    "components/WishlistHeart/README.md",
+    "components/bundle.css",
+    "components/bundle.js",
+    "components/index.d.ts",
+    "inspiration.md",
+    "screen-map.md",
+    "tokens.css"
+  ],
+  "libraries": [
+    {
+      "name": "react",
+      "version": "18",
+      "global": "React"
+    },
+    {
+      "name": "react-dom",
+      "version": "18",
+      "global": "ReactDOM"
+    }
+  ],
+  "components": [
+    {
+      "name": "RollingNumber",
+      "group": "Primitives",
+      "summary": "A number whose digits roll like an odometer when it changes; the base for every count and total in the kit."
+    },
+    {
+      "name": "ProductCard",
+      "group": "Shopping",
+      "summary": "The product tile for category grids, search results and \"you may also like\" rows."
+    },
+    {
+      "name": "WishlistHeart",
+      "group": "Shopping",
+      "summary": "The save-to-wishlist toggle: a heart that pops and bursts when saved and quietly empties when unsaved."
+    },
+    {
+      "name": "VariantPicker",
+      "group": "Shopping",
+      "summary": "Size or colour selection for one product, as a radio group with a single selected pill that glides between options."
+    },
+    {
+      "name": "QuantityStepper",
+      "group": "Shopping",
+      "summary": "Minus / count / plus for the product page and cart lines; the count rolls and the limits push back."
+    },
+    {
+      "name": "AddToCartButton",
+      "group": "Shopping",
+      "summary": "The add-to-bag button: plus → spinner while the add is in flight → drawn tick and \"Added\", or a shake and \"Try again\"."
+    },
+    {
+      "name": "CollectionAccordion",
+      "group": "Shopping",
+      "summary": "Category or collection panels in a row; the one under the pointer (or keyboard focus) opens wide and shows its title, line and link."
+    },
+    {
+      "name": "SkeletonCard",
+      "group": "Shopping",
+      "summary": "A loading stand-in with the same shape as ProductCard, so the grid doesn't jump when products arrive."
+    },
+    {
+      "name": "FreeShippingMeter",
+      "group": "Cart & checkout",
+      "summary": "\"Add ₹350 more for free delivery\", with a bar that fills as the cart grows and a tick when it is unlocked."
+    },
+    {
+      "name": "ToastStack",
+      "group": "Cart & checkout",
+      "summary": "Notifications stacked into one card with the two behind peeking out; point at it or tab into it and it springs apart into a list."
+    },
+    {
+      "name": "ConfirmButton",
+      "group": "Cart & checkout",
+      "summary": "A two-step destructive button: the first press widens it into a question (\"Remove item?\") with a draining timer, the second confirms."
+    },
+    {
+      "name": "OtpInput",
+      "group": "Cart & checkout",
+      "summary": "One-time code boxes for phone sign-in and checkout: typing advances, Backspace steps back, paste and SMS autofill fill every box."
+    },
+    {
+      "name": "OrderTracker",
+      "group": "After purchase",
+      "summary": "Live order status: a big ETA, one live line (\"Ravi is 2.1 km away\") and a rail that fills to the current step."
+    },
+    {
+      "name": "StackedBars",
+      "group": "Seller tools",
+      "summary": "Seller revenue by channel as stacked bars, with a Day / Week toggle; point at or focus a bar and the headline scrubs to that bar."
+    }
+  ],
+  "assetGroups": []
+}

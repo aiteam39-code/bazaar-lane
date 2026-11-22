@@ -1,0 +1,31 @@
+<!-- @dsCard group="After purchase" height=330 subtitle="Big ETA, live line, filling rail" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OrderTracker — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+var steps = [
+  { label: 'Ordered', time: '9:12 am' }, { label: 'Packed', time: '11:40 am' }, { label: 'Shipped', time: '2:05 pm' },
+  { label: 'Out for delivery', time: '5:58 pm' }, { label: 'Delivered' }
+];
+var lines = ['We\u2019ve got your order.', 'Studio Kumhar packed your mug.', 'On its way to the Jaipur hub.', 'Ravi is 2.1 km away.', 'Left at your door, 6:34 pm.'];
+function Demo() {
+  var s = useState(3), at = s[0], setAt = s[1];
+  var done = at === steps.length - 1;
+  return h('div', { style: { display: 'grid', gap: 'var(--space-3)' } },
+    h(IK.OrderTracker, { steps: done ? steps.map(function (x, i) { return i === 4 ? { label: 'Delivered', time: '6:34 pm' } : x; }) : steps, current: at, eta: '6:40 pm', status: lines[at], meta: 'Order #BL-20481 \u00B7 2 items' }),
+    h('div', null, h('button', { className: 'ik-ghost', onClick: function () { setAt((at + 1) % steps.length); } }, done ? 'Start over' : 'Next update'))
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

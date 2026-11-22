@@ -1,0 +1,29 @@
+<!-- @dsCard group="Shopping" height=230 subtitle="One gliding pill; sold-out sizes are skipped" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VariantPicker — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>html, body { margin: 0; background: var(--canvas); }</style>
+</head>
+<body>
+<div id="root" class="ik-stage"></div>
+<script>
+var IK = window.IK, h = React.createElement, useState = React.useState, useEffect = React.useEffect;
+function Demo() {
+  return h('div', { style: { display: 'grid', gap: 'var(--space-5)' } },
+    h(IK.VariantPicker, { label: 'Size', defaultValue: 'M', options: [
+      { value: 'S', label: 'S' }, { value: 'M', label: 'M' }, { value: 'L', label: 'L' },
+      { value: 'XL', label: 'XL', soldOut: true }, { value: 'XXL', label: 'XXL' } ] }),
+    h(IK.VariantPicker, { label: 'Colour', kind: 'swatch', defaultValue: 'indigo', options: [
+      { value: 'indigo', label: 'Indigo', swatch: '#2f3e66' }, { value: 'rust', label: 'Rust', swatch: '#a34a2a' },
+      { value: 'sage', label: 'Sage', swatch: '#8a9a80' }, { value: 'ivory', label: 'Ivory', swatch: '#ece5d6' },
+      { value: 'charcoal', label: 'Charcoal', swatch: '#333333', soldOut: true } ] })
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

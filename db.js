@@ -1,0 +1,478 @@
+// db.js - the database: creates every table, and fills a brand-new database with sample data.
+// The data file is marketplace.db, or the file named in the DB_FILE environment variable (tests use their own file).
+const path = require('path');
+const Database = require('better-sqlite3');
+const { rupees } = require('./money');
+
+const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'marketplace.db');
+// Product photos sellers upload live in this folder (tests use their own folder).
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+const db = new Database(DB_FILE);
+db.pragma('journal_mode = WAL');   // safe when several requests read and write at the same time
+db.pragma('foreign_keys = ON');    // an id that points at another table must really exist
+db.pragma('busy_timeout = 5000');  // wait up to 5 seconds if the file is busy
+
+// The time right now as text the database can sort and compare (UTC, ISO format).
+function nowIso() {
+  return new Date().toISOString();
+}
+
+// The form of a name that search compares: small letters in every alphabet, so CRÈME finds Crème.
+// (SQLite's own LIKE only ignores the case of A to Z.)
+function searchForm(text) {
+  return String(text).normalize('NFC').toLowerCase();
+}
+
+// SQL can call search_text(name) to get the same form, for example: WHERE search_text(products.name) LIKE ?
+db.function('search_text', { deterministic: true }, (text) => (text === null ? null : searchForm(text)));
+
+// Creates every table from CLAUDE.md, if they do not exist yet. All money columns are whole paise.
+function createTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sellers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'rejected', 'suspended')),
+      status_reason TEXT,
+      commission_bps INTEGER CHECK (commission_bps IS NULL OR commission_bps BETWEEN 0 AND 10000),
+      shipping_fee INTEGER NOT NULL DEFAULT 0 CHECK (shipping_fee >= 0),
+      free_shipping_over INTEGER CHECK (free_shipping_over IS NULL OR free_shipping_over >= 0),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'seller')),
+      seller_id INTEGER REFERENCES sellers(id),
+      failed_logins INTEGER NOT NULL DEFAULT 0,
+      locked_until TEXT,
+      created_at TEXT NOT NULL,
+      CHECK ((role = 'admin' AND seller_id IS NULL) OR (role = 'seller' AND seller_id IS NOT NULL))
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      expires_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      commission_bps INTEGER CHECK (commission_bps IS NULL OR commission_bps BETWEEN 0 AND 10000)
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id INTEGER NOT NULL REFERENCES sellers(id),
+      category_id INTEGER NOT NULL REFERENCES categories(id),
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      emoji TEXT NOT NULL DEFAULT '📦',
+      price INTEGER NOT NULL CHECK (price > 0),
+      stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+      low_stock_level INTEGER NOT NULL DEFAULT 0 CHECK (low_stock_level >= 0),
+      active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+      created_at TEXT NOT NULL,
+      hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1)),
+      hidden_reason TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      tracking_token TEXT NOT NULL UNIQUE,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL,
+      address TEXT NOT NULL,
+      payment_method TEXT NOT NULL CHECK (payment_method IN ('online', 'cod')),
+      items_total INTEGER NOT NULL CHECK (items_total >= 0),
+      shipping_total INTEGER NOT NULL CHECK (shipping_total >= 0),
+      grand_total INTEGER NOT NULL CHECK (grand_total >= 0),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS seller_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_order_id INTEGER NOT NULL REFERENCES customer_orders(id),
+      seller_id INTEGER NOT NULL REFERENCES sellers(id),
+      status TEXT NOT NULL CHECK (status IN ('pending_payment', 'placed', 'accepted', 'packed', 'shipped', 'delivered', 'rejected', 'cancelled')),
+      reason TEXT,
+      courier TEXT,
+      tracking_number TEXT,
+      items_total INTEGER NOT NULL CHECK (items_total >= 0),
+      shipping INTEGER NOT NULL CHECK (shipping >= 0),
+      commission_bps INTEGER NOT NULL CHECK (commission_bps BETWEEN 0 AND 10000),
+      commission INTEGER NOT NULL CHECK (commission >= 0),
+      payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'paid', 'refunded')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_order_id INTEGER NOT NULL REFERENCES seller_orders(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      name TEXT NOT NULL,
+      unit_price INTEGER NOT NULL CHECK (unit_price >= 0),
+      quantity INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 20),
+      line_total INTEGER NOT NULL CHECK (line_total >= 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS status_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_order_id INTEGER NOT NULL REFERENCES seller_orders(id),
+      status TEXT NOT NULL CHECK (status IN ('pending_payment', 'placed', 'accepted', 'packed', 'shipped', 'delivered', 'rejected', 'cancelled')),
+      by_role TEXT NOT NULL CHECK (by_role IN ('system', 'customer', 'seller', 'admin')),
+      at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_order_id INTEGER NOT NULL REFERENCES customer_orders(id),
+      provider TEXT NOT NULL CHECK (provider IN ('fake', 'razorpay')),
+      provider_ref TEXT,
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      status TEXT NOT NULL DEFAULT 'created' CHECK (status IN ('created', 'paid', 'failed')),
+      created_at TEXT NOT NULL
+    );
+
+    -- seller_order_id is UNIQUE: a seller order can be refunded only once, even if two requests arrive together.
+    CREATE TABLE IF NOT EXISTS refunds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payment_id INTEGER NOT NULL REFERENCES payments(id),
+      seller_order_id INTEGER NOT NULL UNIQUE REFERENCES seller_orders(id),
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      provider_ref TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- amount is + when the platform owes the seller, - when the seller owes or was paid.
+    CREATE TABLE IF NOT EXISTS ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id INTEGER NOT NULL REFERENCES sellers(id),
+      seller_order_id INTEGER REFERENCES seller_orders(id),
+      type TEXT NOT NULL CHECK (type IN ('earning', 'commission_owed', 'payout')),
+      amount INTEGER NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- Sector 6: verified reviews. order_item_id is UNIQUE: one review per product per order.
+    CREATE TABLE IF NOT EXISTS reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_item_id INTEGER NOT NULL UNIQUE REFERENCES order_items(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      seller_id INTEGER NOT NULL REFERENCES sellers(id),
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      text TEXT NOT NULL DEFAULT '',
+      seller_reply TEXT,
+      hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1)),
+      created_at TEXT NOT NULL
+    );
+
+    -- Sector 5: "Help with this order". Only one open request per seller order (the index below).
+    CREATE TABLE IF NOT EXISTS help_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_order_id INTEGER NOT NULL REFERENCES seller_orders(id),
+      message TEXT NOT NULL,
+      seller_reply TEXT,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+      resolution TEXT,
+      created_at TEXT NOT NULL,
+      resolved_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS help_one_open_per_order ON help_requests(seller_order_id) WHERE status = 'open';
+
+    -- Sector 6: "Report this listing".
+    CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'hidden', 'dismissed')),
+      created_at TEXT NOT NULL
+    );
+
+    -- Sector 9: the contact form and the newsletter.
+    CREATE TABLE IF NOT EXISTS contact_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      handled INTEGER NOT NULL DEFAULT 0 CHECK (handled IN (0, 1)),
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS newsletter (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      consent_at TEXT NOT NULL,
+      unsubscribe_token TEXT NOT NULL UNIQUE
+    );
+
+    -- The outbox: every email the app "sends" (mail.js). Nothing is really sent.
+    CREATE TABLE IF NOT EXISTS emails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      to_address TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- How many times customers opened each product page, per day (sellers and the admin do not count).
+    CREATE TABLE IF NOT EXISTS product_views (
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      day TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0),
+      PRIMARY KEY (product_id, day)
+    );
+
+    -- Sector 4: a one-time code checks the phone before a cash-on-delivery order.
+    CREATE TABLE IF NOT EXISTS phone_codes (
+      phone TEXT PRIMARY KEY,
+      code_hash TEXT NOT NULL,
+      sent_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      tries INTEGER NOT NULL DEFAULT 0,
+      verify_token TEXT,
+      verified_until TEXT
+    );
+
+    -- A delivered seller order is booked in the ledger only once.
+    CREATE UNIQUE INDEX IF NOT EXISTS ledger_one_booking_per_order ON ledger(seller_order_id, type) WHERE seller_order_id IS NOT NULL;
+
+    -- Indexes so lists stay fast as the data grows.
+    CREATE INDEX IF NOT EXISTS products_by_seller ON products(seller_id);
+    CREATE INDEX IF NOT EXISTS products_by_category ON products(category_id);
+    CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS seller_orders_by_seller ON seller_orders(seller_id, status);
+    CREATE INDEX IF NOT EXISTS seller_orders_by_customer_order ON seller_orders(customer_order_id);
+    CREATE INDEX IF NOT EXISTS order_items_by_seller_order ON order_items(seller_order_id);
+    CREATE INDEX IF NOT EXISTS status_log_by_seller_order ON status_log(seller_order_id);
+    CREATE INDEX IF NOT EXISTS payments_by_customer_order ON payments(customer_order_id);
+    CREATE INDEX IF NOT EXISTS ledger_by_seller ON ledger(seller_id);
+  `);
+}
+
+// Sector 2 added two columns to products, so the admin can hide a product that breaks the rules:
+// hidden (0 or 1) and hidden_reason. An older database gets them here; every row and value is kept.
+function addMissingColumns() {
+  const productColumns = db.prepare('PRAGMA table_info(products)').all().map((column) => column.name);
+  if (!productColumns.includes('hidden')) {
+    db.exec('ALTER TABLE products ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1))');
+  }
+  if (!productColumns.includes('hidden_reason')) {
+    db.exec('ALTER TABLE products ADD COLUMN hidden_reason TEXT');
+  }
+  if (!productColumns.includes('photo')) {
+    db.exec('ALTER TABLE products ADD COLUMN photo TEXT'); // the photo's file name in the uploads folder, or empty
+  }
+  // Sector 4: the provider's id of the payment itself (Razorpay refunds need it).
+  const paymentColumns = db.prepare('PRAGMA table_info(payments)').all().map((column) => column.name);
+  if (!paymentColumns.includes('paid_ref')) db.exec('ALTER TABLE payments ADD COLUMN paid_ref TEXT');
+  // The prompt pack's notebook upgrade (2a): each shop's city, dispatch days, return window, approval date and early bird.
+  const sellerColumns = db.prepare('PRAGMA table_info(sellers)').all().map((column) => column.name);
+  const newSellerColumns = {
+    city: "TEXT NOT NULL DEFAULT ''",
+    dispatch_days: 'INTEGER NOT NULL DEFAULT 2 CHECK (dispatch_days BETWEEN 1 AND 7)',
+    return_days: 'INTEGER NOT NULL DEFAULT 7 CHECK (return_days IN (0, 7, 10, 15, 30))',
+    approved_at: 'TEXT',
+    early_bird: 'INTEGER NOT NULL DEFAULT 0 CHECK (early_bird IN (0, 1))',
+  };
+  for (const [name, definition] of Object.entries(newSellerColumns)) {
+    if (!sellerColumns.includes(name)) db.exec(`ALTER TABLE sellers ADD COLUMN ${name} ${definition}`);
+  }
+  // Shops approved before approved_at existed count as approved when they joined (done once, when the column is added).
+  if (!sellerColumns.includes('approved_at')) {
+    db.exec("UPDATE sellers SET approved_at = created_at WHERE status IN ('active', 'suspended')");
+  }
+}
+
+// Settings the app needs. Added only when missing, so a change the admin makes is never overwritten.
+function addDefaultSettings() {
+  const add = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  add.run('default_commission_bps', '1000'); // 10%
+  add.run('cod_enabled', '1');               // cash on delivery is switched on
+  add.run('early_bird_slots', '0');          // the early-bird offer is off until the admin sets it
+  add.run('early_bird_bps', '500');          // 5%
+  add.run('early_bird_days', '90');
+}
+
+// The sample shops' city, dispatch days and return window (only filled in while a sample shop has no city yet).
+const SAMPLE_SHOP_DETAILS = {
+  'Chilli Lane Pantry': { city: 'Jaipur', dispatch_days: 2, return_days: 7 },
+  'Terracotta Corner': { city: 'Khurja', dispatch_days: 3, return_days: 10 },
+  'Handloom Nook': { city: 'Kannur', dispatch_days: 2, return_days: 15 },
+  'Brass Bell Crafts': { city: 'Moradabad', dispatch_days: 3, return_days: 0 },
+};
+function addSampleShopDetails() {
+  const update = db.prepare("UPDATE sellers SET city = ?, dispatch_days = ?, return_days = ? WHERE shop_name = ? AND city = ''");
+  for (const [shopName, details] of Object.entries(SAMPLE_SHOP_DETAILS)) {
+    update.run(details.city, details.dispatch_days, details.return_days, shopName);
+  }
+}
+
+createTables();
+addMissingColumns();
+addDefaultSettings();
+addSampleShopDetails();
+
+// ---------- Sample data (only for a brand-new, empty database) ----------
+
+const ADMIN_PASSWORD_MIN = 12; // an admin password must be at least 12 characters
+
+// Demo logins. TEST passwords only, for trying the app on this laptop. They are also listed in DEMO_LOGINS.md.
+const DEMO_ACCOUNTS = [
+  { email: 'admin@bazaarlane.test', password: 'admin-test-2026', role: 'admin', shop: null },
+  { email: 'pantry@bazaarlane.test', password: 'pantry-test-2026', role: 'seller', shop: 'Chilli Lane Pantry' },
+  { email: 'terracotta@bazaarlane.test', password: 'terracotta-test-2026', role: 'seller', shop: 'Terracotta Corner' },
+  { email: 'handloom@bazaarlane.test', password: 'handloom-test-2026', role: 'seller', shop: 'Handloom Nook' },
+  { email: 'brassbell@bazaarlane.test', password: 'brassbell-test-2026', role: 'seller', shop: 'Brass Bell Crafts' },
+];
+
+// 4 categories, each with its own commission rate (basis points: 800 = 8%).
+const SAMPLE_CATEGORIES = [
+  { name: 'Food and spices', commission_bps: 800 },
+  { name: 'Home and kitchen', commission_bps: 1000 },
+  { name: 'Clothing', commission_bps: 1200 },
+  { name: 'Gifts and crafts', commission_bps: 1500 },
+];
+
+// 3 active shops and 1 pending shop. Terracotta Corner has its own 9% rate, the others use their category's rate.
+const SAMPLE_SHOPS = [
+  {
+    shop_name: 'Chilli Lane Pantry', slug: 'chilli-lane-pantry', status: 'active', phone: '9000000101',
+    description: 'Small-batch chilli pickles, hot sauces and spice mixes, made in our own kitchen.',
+    commission_bps: null, shipping_fee: rupees(40), free_shipping_over: rupees(499),
+  },
+  {
+    shop_name: 'Terracotta Corner', slug: 'terracotta-corner', status: 'active', phone: '9000000102',
+    description: 'Hand-made clay pots, cups and lamps from a family pottery.',
+    commission_bps: 900, shipping_fee: rupees(80), free_shipping_over: rupees(999),
+  },
+  {
+    shop_name: 'Handloom Nook', slug: 'handloom-nook', status: 'active', phone: '9000000103',
+    description: 'Soft cotton stoles, towels and bags woven on hand looms.',
+    commission_bps: null, shipping_fee: rupees(60), free_shipping_over: rupees(799),
+  },
+  {
+    shop_name: 'Brass Bell Crafts', slug: 'brass-bell-crafts', status: 'pending', phone: '9000000104',
+    description: 'Hand-polished brass bells, lamps and small gifts.',
+    commission_bps: null, shipping_fee: rupees(50), free_shipping_over: rupees(599),
+  },
+];
+
+// 18 products, 6 per active shop. Prices are in whole rupees here and saved as paise.
+// LOW on purpose: Green Chilli Pickle (3, low at 5), Terracotta Cooking Pot (2, low at 3), Chilli Pickle Gift Box (0 = sold out).
+// Switched off on purpose: Woollen Shawl.
+const SAMPLE_PRODUCTS = {
+  'Chilli Lane Pantry': [
+    { name: 'Green Chilli Pickle', category: 'Food and spices', price: 180, stock: 3, low: 5, emoji: '🌶️', description: 'Whole green chillies in mustard oil with lemon and spices. 300 g jar.' },
+    { name: 'Red Chilli Garlic Chutney', category: 'Food and spices', price: 150, stock: 25, low: 5, emoji: '🧄', description: 'A hot, garlicky chutney for snacks and sandwiches. 200 g jar.' },
+    { name: 'Hot Chilli Sauce', category: 'Food and spices', price: 220, stock: 18, low: 5, emoji: '🔥', description: 'Fiery red chilli sauce with a little vinegar. 250 ml bottle.' },
+    { name: 'Smoky Chilli Oil', category: 'Food and spices', price: 260, stock: 12, low: 4, emoji: '🫙', description: 'Dried red chillies and garlic in hot oil. Great on noodles. 200 ml.' },
+    { name: 'Chilli Masala Spice Mix', category: 'Food and spices', price: 120, stock: 40, low: 10, emoji: '🥄', description: 'Our everyday blend of red chilli, coriander and cumin. 100 g pack.' },
+    { name: 'Chilli Pickle Gift Box', category: 'Gifts and crafts', price: 599, stock: 0, low: 2, emoji: '🎁', description: 'Three small jars of our best pickles in a gift box.' },
+  ],
+  'Terracotta Corner': [
+    { name: 'Clay Water Bottle', category: 'Home and kitchen', price: 450, stock: 10, low: 3, emoji: '🏺', description: 'Keeps water cool the natural way. 1 litre.' },
+    { name: 'Terracotta Cooking Pot', category: 'Home and kitchen', price: 650, stock: 2, low: 3, emoji: '🍲', description: 'A deep clay pot for slow-cooked curries and dal. 2 litres.' },
+    { name: 'Clay Tea Cups (set of 4)', category: 'Home and kitchen', price: 380, stock: 20, low: 5, emoji: '☕', description: 'Small hand-made cups for hot chai.' },
+    { name: 'Hanging Clay Lamp', category: 'Gifts and crafts', price: 520, stock: 8, low: 2, emoji: '🏮', description: 'A painted clay lamp with a hook for hanging.' },
+    { name: 'Clay Planter', category: 'Home and kitchen', price: 300, stock: 15, low: 4, emoji: '🪴', description: 'A round planter with a drainage hole. 15 cm wide.' },
+    { name: 'Clay Diya Set (12)', category: 'Gifts and crafts', price: 240, stock: 30, low: 10, emoji: '🪔', description: 'Twelve hand-shaped oil lamps for festivals.' },
+  ],
+  'Handloom Nook': [
+    { name: 'Cotton Stole', category: 'Clothing', price: 550, stock: 14, low: 4, emoji: '🧣', description: 'A light hand-woven cotton stole in indigo stripes.' },
+    { name: 'Handloom Bath Towel', category: 'Home and kitchen', price: 420, stock: 20, low: 5, emoji: '🛁', description: 'Soft, quick-drying cotton bath towel.' },
+    { name: 'Cotton Tote Bag', category: 'Gifts and crafts', price: 280, stock: 25, low: 5, emoji: '👜', description: 'A strong tote bag woven from thick cotton.' },
+    { name: 'Hand-woven Scarf', category: 'Clothing', price: 480, stock: 9, low: 3, emoji: '🧶', description: 'A warm cotton scarf with tassels.' },
+    { name: 'Cotton Kitchen Towels (set of 3)', category: 'Home and kitchen', price: 250, stock: 30, low: 6, emoji: '🧺', description: 'Checked kitchen towels that soak up well.' },
+    { name: 'Woollen Shawl', category: 'Clothing', price: 1200, stock: 6, low: 2, emoji: '🧥', description: 'A thick woollen shawl for cold evenings.', switchedOff: true },
+  ],
+};
+
+// Fills the database with the sample data, but only when it has no users yet (a brand-new database).
+// Returns true when it added the data. server.js calls this once at start-up.
+function fillSampleDataIfEmpty() {
+  const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  if (userCount > 0) return false;
+
+  // Loaded here, not at the top, because auth.js also loads db.js.
+  const { hashPassword } = require('./auth');
+  const addEverything = db.transaction(() => {
+    const categoryIds = addSampleCategories();
+    const shopIds = addSampleShops();
+    addDemoLogins(shopIds, hashPassword);
+    addSampleProducts(shopIds, categoryIds);
+  });
+  addEverything();
+  addSampleShopDetails();
+  db.exec("UPDATE sellers SET approved_at = created_at WHERE approved_at IS NULL AND status = 'active'");
+  return true;
+}
+
+// Adds the 4 categories. Returns { 'Food and spices': id, ... }.
+function addSampleCategories() {
+  const ids = {};
+  for (const category of SAMPLE_CATEGORIES) {
+    db.prepare('INSERT OR IGNORE INTO categories (name, commission_bps) VALUES (?, ?)').run(category.name, category.commission_bps);
+    ids[category.name] = db.prepare('SELECT id FROM categories WHERE name = ?').get(category.name).id;
+  }
+  return ids;
+}
+
+// Adds the 4 shops. Returns { 'Chilli Lane Pantry': id, ... }.
+function addSampleShops() {
+  const ids = {};
+  const insert = db.prepare(`
+    INSERT INTO sellers (shop_name, slug, description, phone, status, commission_bps, shipping_fee, free_shipping_over, created_at)
+    VALUES (@shop_name, @slug, @description, @phone, @status, @commission_bps, @shipping_fee, @free_shipping_over, @created_at)`);
+  for (const shop of SAMPLE_SHOPS) {
+    ids[shop.shop_name] = insert.run({ ...shop, created_at: nowIso() }).lastInsertRowid;
+  }
+  return ids;
+}
+
+// Adds the admin and one login per sample shop. Only the password hash is saved, never the password.
+function addDemoLogins(shopIds, hashPassword) {
+  const insert = db.prepare('INSERT INTO users (email, password_hash, role, seller_id, created_at) VALUES (?, ?, ?, ?, ?)');
+  for (const account of DEMO_ACCOUNTS) {
+    if (account.role === 'admin' && account.password.length < ADMIN_PASSWORD_MIN) {
+      throw new Error(`An admin password must be at least ${ADMIN_PASSWORD_MIN} characters.`);
+    }
+    const sellerId = account.shop ? shopIds[account.shop] : null;
+    insert.run(account.email, hashPassword(account.password), account.role, sellerId, nowIso());
+  }
+}
+
+// Adds the 18 sample products.
+function addSampleProducts(shopIds, categoryIds) {
+  const insert = db.prepare(`
+    INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`);
+  for (const [shopName, products] of Object.entries(SAMPLE_PRODUCTS)) {
+    for (const p of products) {
+      const active = p.switchedOff ? 0 : 1;
+      insert.run(shopIds[shopName], categoryIds[p.category], p.name, p.description, p.emoji, rupees(p.price), p.stock, p.low, active, nowIso());
+    }
+  }
+}
+
+// The web address of a product's photo, or null when it has none (the page then shows the kit's placeholder art).
+function photoUrl(photo) {
+  return photo ? '/uploads/' + photo : null;
+}
+
+module.exports = { ADMIN_PASSWORD_MIN, db, nowIso, searchForm, fillSampleDataIfEmpty, DEMO_ACCOUNTS, DB_FILE, UPLOADS_DIR, photoUrl };
