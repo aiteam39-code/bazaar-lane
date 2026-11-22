@@ -2,7 +2,10 @@
 // (the outbox), which the admin reads at /admin/outbox.html. Later a real email service can replace sendEmail().
 // Rule: an email never contains a password.
 const { db, nowIso } = require('./db');
+const fs = require('fs');
+const path = require('path');
 const { formatMoney } = require('./money');
+const { currentSeason, SEASON_FOLDER } = require('./seasons');
 
 const MARKETPLACE_NAME = process.env.MARKETPLACE_NAME || 'Bazaar Lane';
 const SITE_URL = process.env.SITE_URL || `http://localhost:${Number(process.env.PORT) || 3000}`;
@@ -22,6 +25,19 @@ function trackingLink(token) {
 function sellerEmail(sellerId) {
   const user = db.prepare("SELECT email FROM users WHERE seller_id = ? AND role = 'seller' ORDER BY id LIMIT 1").get(sellerId);
   return user ? user.email : null;
+}
+
+// While a season is on, its warm sentence for an email (from public/seasons/<key>-words.json), or null.
+function seasonSentence(which, part) {
+  const season = currentSeason();
+  if (!season) return null;
+  try {
+    const words = JSON.parse(fs.readFileSync(path.join(SEASON_FOLDER, season.key + '-words.json'), 'utf8'));
+    const template = words.email && words.email[which];
+    return template ? template.replace('{shop}', part.shop_name).replace('{courier}', part.courier || 'the courier') : null;
+  } catch (e) {
+    return null; // no words file: the normal sentence
+  }
 }
 
 // One seller order with its shop, items and customer order, for the emails below.
@@ -45,7 +61,9 @@ function partLines(part) {
     `From ${part.shop_name}:`,
     ...part.items.map((item) => `  ${item.quantity} x ${item.name} (${formatMoney(item.unit_price)} each): ${formatMoney(item.line_total)}`),
     `  Shipping: ${part.shipping === 0 ? 'free' : formatMoney(part.shipping)}`,
-    `  Total from ${part.shop_name}: ${formatMoney(part.items_total + part.shipping)}`,
+    part.gift_wrap ? `  Gift wrap: ${formatMoney(part.gift_wrap)}` : null,
+    part.gift_message ? `  Gift message: "${part.gift_message}"` : null,
+    `  Total from ${part.shop_name}: ${formatMoney(part.items_total + part.shipping + part.gift_wrap)}`,
   ];
 }
 
@@ -68,6 +86,7 @@ function sendOrderConfirmation(customerOrderId) {
     ...parts.flatMap((part) => [...partLines(part), '']),
     `Items: ${formatMoney(order.items_total)}`,
     `Shipping: ${formatMoney(order.shipping_total)}`,
+    order.gift_wrap_total ? `Gift wrap: ${formatMoney(order.gift_wrap_total)}` : null,
     `Grand total: ${formatMoney(order.grand_total)} (${paidHow(order.payment_method)})`,
     '',
     `Delivery address: ${order.address}`,
@@ -96,7 +115,7 @@ function sendPartStopped(sellerOrderId) {
   const part = loadPart(sellerOrderId);
   const word = part.status === 'rejected' ? 'could not take' : 'cancelled';
   const money = part.payment_status === 'refunded' || part.payment_method === 'online'
-    ? `We are refunding ${formatMoney(part.items_total + part.shipping)} for this part to the way you paid.`
+    ? `We are refunding ${formatMoney(part.items_total + part.shipping + part.gift_wrap)} for this part to the way you paid.`
     : 'You will not be asked to pay for this part.';
   sendEmail(part.customer_email, `Order ${part.code}: ${part.shop_name} ${word} your part`, [
     `Hello ${part.customer_name},`,
@@ -115,7 +134,8 @@ function sendShipped(sellerOrderId) {
   sendEmail(part.customer_email, `Order ${part.code}: ${part.shop_name} shipped your part`, [
     `Hello ${part.customer_name},`,
     '',
-    `${part.shop_name} shipped your part of order ${part.code} with ${part.courier}.`,
+    seasonSentence('shipped', part) || `${part.shop_name} shipped your part of order ${part.code} with ${part.courier}.`,
+    `Order: ${part.code}`,
     `Courier tracking number: ${part.tracking_number}`,
     `Your order: ${trackingLink(part.tracking_token)}`,
   ]);
@@ -127,7 +147,8 @@ function sendDelivered(sellerOrderId) {
   sendEmail(part.customer_email, `Order ${part.code}: your part from ${part.shop_name} was delivered`, [
     `Hello ${part.customer_name},`,
     '',
-    `Your part of order ${part.code} from ${part.shop_name} was delivered.`,
+    seasonSentence('delivered', part) || `Your part of order ${part.code} from ${part.shop_name} was delivered.`,
+    `Order: ${part.code}`,
     `How was it? Leave a review here: ${trackingLink(part.tracking_token)}`,
   ]);
 }

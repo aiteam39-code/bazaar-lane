@@ -26,9 +26,9 @@ function bookDelivery(sellerOrderId) {
   if (!part || part.status !== 'delivered') return;
   const online = part.payment_method === 'online';
   const type = online ? 'earning' : 'commission_owed';
-  const amount = online ? part.items_total + part.shipping - part.commission : -part.commission;
+  const amount = online ? part.items_total + part.shipping + part.gift_wrap - part.commission : -part.commission;
   const note = online
-    ? `${part.code}: items ${part.items_total} + shipping ${part.shipping} - commission ${part.commission} (paise)`
+    ? `${part.code}: items ${part.items_total} + shipping ${part.shipping}${part.gift_wrap ? ' + gift wrap ' + part.gift_wrap : ''} - commission ${part.commission} (paise)`
     : `${part.code}: cash on delivery, commission ${part.commission} paise owed`;
   // INSERT OR IGNORE + the unique index (seller_order_id, type): a second booking of the same order does nothing.
   db.prepare('INSERT OR IGNORE INTO ledger (seller_id, seller_order_id, type, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)')

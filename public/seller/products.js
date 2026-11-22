@@ -240,6 +240,7 @@ function startEditing(product) {
   document.getElementById('category').value = String(product.category_id);
   document.getElementById('price').value = paiseToRupeesText(product.price);
   document.getElementById('description').value = product.description;
+  document.getElementById('giftable').checked = product.giftable === 1;
   document.getElementById('low-stock').value = String(product.low_stock_level);
   document.getElementById('stock-field').classList.add('hidden');
   document.getElementById('save-button').textContent = 'Save changes';
@@ -268,6 +269,7 @@ function readProductForm() {
     category_id: document.getElementById('category').value,
     price: document.getElementById('price').value,
     description: document.getElementById('description').value,
+    giftable: document.getElementById('giftable').checked,
     low_stock_level: numberBoxValue('low-stock'),
   };
   if (editingId === null) values.stock = numberBoxValue('stock');

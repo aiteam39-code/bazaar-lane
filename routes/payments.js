@@ -113,7 +113,7 @@ router.get('/api/admin/payments', auth.requireRole('admin'), (req, res) => {
     created_at: payment.created_at, refunds: refundsOf(payment.id), split: splitOf(payment.customer_order_id),
   }));
   const refundDue = db.prepare(`
-    SELECT seller_orders.id, seller_orders.status, seller_orders.items_total + seller_orders.shipping AS amount,
+    SELECT seller_orders.id, seller_orders.status, seller_orders.items_total + seller_orders.shipping + seller_orders.gift_wrap AS amount,
            sellers.shop_name, customer_orders.code
     FROM seller_orders JOIN sellers ON sellers.id = seller_orders.seller_id
     JOIN customer_orders ON customer_orders.id = seller_orders.customer_order_id
@@ -157,8 +157,8 @@ function refundsOf(paymentId) {
 function splitOf(customerOrderId) {
   return db.prepare(`
     SELECT sellers.shop_name, seller_orders.status, seller_orders.payment_status,
-           seller_orders.items_total + seller_orders.shipping AS total, seller_orders.commission_bps, seller_orders.commission,
-           seller_orders.items_total + seller_orders.shipping - seller_orders.commission AS shop_share
+           seller_orders.items_total + seller_orders.shipping + seller_orders.gift_wrap AS total, seller_orders.commission_bps, seller_orders.commission,
+           seller_orders.items_total + seller_orders.shipping + seller_orders.gift_wrap - seller_orders.commission AS shop_share
     FROM seller_orders JOIN sellers ON sellers.id = seller_orders.seller_id
     WHERE seller_orders.customer_order_id = ? ORDER BY sellers.shop_name`).all(customerOrderId);
 }

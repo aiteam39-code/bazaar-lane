@@ -1,0 +1,14 @@
+{
+  "added": "Added to your Christmas bag",
+  "sentences": {
+    "placed": "{shop} has your Christmas order and will accept it soon.",
+    "accepted": "{shop} accepted your order and is getting it ready.",
+    "packed": "{shop} wrapped your {item} with care.",
+    "shipped": "{shop} wrapped your order and handed it to {courier}.",
+    "delivered": "Delivered in time for the festivities. We hope it brings joy."
+  },
+  "email": {
+    "shipped": "{shop} wrapped your order and handed it to {courier}.",
+    "delivered": "Your parcel from {shop} has arrived in time for the festivities."
+  }
+}

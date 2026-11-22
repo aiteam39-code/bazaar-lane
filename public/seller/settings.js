@@ -26,6 +26,7 @@ function fillForm(shop, returnChoices) {
   document.getElementById('description').value = shop.description;
   document.getElementById('shipping-fee').value = paiseToRupeesText(shop.shipping_fee);
   document.getElementById('free-over').value = shop.free_shipping_over === null ? '' : paiseToRupeesText(shop.free_shipping_over);
+  document.getElementById('gift-wrap').value = paiseToRupeesText(shop.gift_wrap_price);
   fillChoices('dispatch-days', [1, 2, 3, 4, 5, 6, 7].map((d) => [d, `${d} day${d === 1 ? '' : 's'}`]), shop.dispatch_days);
   fillChoices('return-days', returnChoices.map((d) => [d, d === 0 ? 'No returns' : `Within ${d} days of delivery`]), shop.return_days);
 }
@@ -49,6 +50,7 @@ settingsForm.addEventListener('submit', async (event) => {
       description: document.getElementById('description').value,
       shipping_fee: document.getElementById('shipping-fee').value,
       free_shipping_over: document.getElementById('free-over').value,
+      gift_wrap_price: document.getElementById('gift-wrap').value,
       dispatch_days: document.getElementById('dispatch-days').value,
       return_days: document.getElementById('return-days').value,
     });

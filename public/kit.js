@@ -54,7 +54,7 @@ function addToBag(product, quantity = 1) {
   for (let i = 0; i < quantity; i += 1) inBag = addToCart(product.id);
   if (inBag === 0) return Promise.reject(new Error('Your bag is full.'));
   showToast({
-    title: 'Added to bag',
+    title: (window.SEASON_WORDS && SEASON_WORDS.added) || 'Added to bag', // a season may warm the words
     body: inBag === MOST_OF_ONE ? `${product.name} · ${MOST_OF_ONE} in your bag, the most for one order` : product.name,
     thumb: product.photo_url || placeholderArt(product.id),
     action: { label: 'View bag', onClick: () => { location.href = '/cart.html'; } },
@@ -266,7 +266,7 @@ const STAFF_LINKS = {
     ['Home', '/admin/'], ['Shops', '/admin/shops.html'], ['Products', '/admin/products.html'], ['Orders', '/admin/orders.html'],
     ['Payments', '/admin/payments.html'], ['Commissions', '/admin/commissions.html'], ['Payouts', '/admin/payouts.html'],
     ['Help requests', '/admin/help.html'], ['Reviews', '/admin/reviews.html'], ['Reports', '/admin/reports.html'],
-    ['Messages', '/admin/messages.html'], ['Outbox', '/admin/outbox.html'],
+    ['Messages', '/admin/messages.html'], ['Outbox', '/admin/outbox.html'], ['Seasons', '/admin/seasons.html'],
   ],
 };
 

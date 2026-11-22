@@ -204,7 +204,8 @@ function sellerView(row, dispatchDays) {
     id: row.id, code: row.code, status: row.status, reason: row.reason, courier: row.courier, tracking_number: row.tracking_number,
     customer_name: row.customer_name, phone: row.phone, address: row.address,
     payment_method: row.payment_method, payment_status: row.payment_status,
-    items: itemsOf(row.id), items_total: row.items_total, shipping: row.shipping, total: row.items_total + row.shipping,
+    items: itemsOf(row.id), items_total: row.items_total, shipping: row.shipping, gift_wrap: row.gift_wrap,
+    gift_message: row.gift_message, total: row.items_total + row.shipping + row.gift_wrap,
     commission_bps: row.commission_bps, commission: row.commission,
     placed_at: placedAt, ship_by: shipBy, late: waitingToShip && Date.parse(shipBy) < Date.now(),
     history: historyOf(row.id), help: help || null,
@@ -278,7 +279,7 @@ function trackingView(order) {
   const parts = partsOf(order.id);
   const stillToPay = parts
     .filter((part) => part.status !== 'rejected' && part.status !== 'cancelled')
-    .reduce((sum, part) => sum + part.items_total + part.shipping, 0);
+    .reduce((sum, part) => sum + part.items_total + part.shipping + part.gift_wrap, 0);
   return {
     order: {
       code: order.code,
@@ -288,6 +289,7 @@ function trackingView(order) {
       payment_method: order.payment_method,
       items_total: order.items_total,
       shipping_total: order.shipping_total,
+      gift_wrap_total: order.gift_wrap_total,
       grand_total: order.grand_total,
       still_to_pay: stillToPay,
     },
@@ -302,7 +304,9 @@ function trackingView(order) {
       items: itemsWithReviews(part),
       items_total: part.items_total,
       shipping: part.shipping,
-      total: part.items_total + part.shipping,
+      gift_wrap: part.gift_wrap,
+      gift_message: part.gift_message,
+      total: part.items_total + part.shipping + part.gift_wrap,
       history: historyOf(part.id).map(({ status, at }) => ({ status, at })),
       can_cancel: part.status === 'placed',
       payment_status: part.payment_status,

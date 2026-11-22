@@ -72,7 +72,7 @@ function showLinks(data) {
     ['Shops', '/admin/shops.html', data.shops_waiting, 'waiting'], ['Products', '/admin/products.html'], ['Orders', '/admin/orders.html'],
     ['Payments', '/admin/payments.html'], ['Commissions', '/admin/commissions.html'], ['Payouts', '/admin/payouts.html'],
     ['Help requests', '/admin/help.html', data.open_help, 'open'], ['Reviews', '/admin/reviews.html'],
-    ['Reports', '/admin/reports.html', data.open_reports, 'open'], ['Messages', '/admin/messages.html'], ['Outbox', '/admin/outbox.html'],
+    ['Reports', '/admin/reports.html', data.open_reports, 'open'], ['Messages', '/admin/messages.html'], ['Outbox', '/admin/outbox.html'], ['Seasons', '/admin/seasons.html'],
   ];
   document.getElementById('big-links').replaceChildren(...links.map(([text, address, count, word]) => {
     const link = make('a', 'card big-link', text);

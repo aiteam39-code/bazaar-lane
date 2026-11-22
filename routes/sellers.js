@@ -87,9 +87,9 @@ router.put('/api/seller/shop', auth.requireSeller('active'), (req, res) => {
   if (sameName) throw new HttpError(409, 'Another shop already has this name. Please choose another name.');
   db.prepare(`
     UPDATE sellers SET shop_name = ?, description = ?, city = ?, dispatch_days = ?, return_days = ?, shipping_fee = ?,
-      free_shipping_over = ? WHERE id = ?`)
+      free_shipping_over = ?, gift_wrap_price = ? WHERE id = ?`)
     .run(form.shopName, form.description, form.city, form.dispatchDays, form.returnDays, form.shippingFee,
-      form.freeShippingOver, req.shop.id);
+      form.freeShippingOver, form.giftWrapPrice, req.shop.id);
   res.json({ ok: true, shop: shopSettings(req.shop.id), message: 'Your shop settings were saved.' });
 });
 
@@ -161,7 +161,7 @@ function createPendingShop(form) {
 // One shop's settings, as the seller sees them (the money in paise).
 function shopSettings(shopId) {
   return db.prepare(`
-    SELECT shop_name, slug, description, city, dispatch_days, return_days, shipping_fee, free_shipping_over, status
+    SELECT shop_name, slug, description, city, dispatch_days, return_days, shipping_fee, free_shipping_over, gift_wrap_price, status
     FROM sellers WHERE id = ?`).get(shopId);
 }
 
@@ -185,7 +185,10 @@ function readShopSettings(body) {
   if (freeText !== '' && (freeShippingOver === null || freeShippingOver > MOST_SHIPPING * 10)) {
     throw new HttpError(400, 'Free shipping above must be in rupees, like 499, or empty for never.');
   }
-  return { shopName, description, city, dispatchDays, returnDays, shippingFee, freeShippingOver };
+  const wrapText = String(body.gift_wrap_price ?? '0').trim() || '0';
+  const giftWrapPrice = paiseFromRupeesText(wrapText);
+  if (giftWrapPrice === null || giftWrapPrice > MOST_SHIPPING) throw new HttpError(400, 'Gift wrap must be in rupees, from 0 (not offered) to 10,000, like 30.');
+  return { shopName, description, city, dispatchDays, returnDays, shippingFee, freeShippingOver, giftWrapPrice };
 }
 
 // A shop was approved: remember when, and put it in the early-bird group while the offer has places left

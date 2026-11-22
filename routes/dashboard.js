@@ -50,7 +50,7 @@ router.get('/api/admin/dashboard', auth.requireRole('admin'), (req, res) => {
   const week = startOfWeek();
   const one = (sql, ...values) => db.prepare(sql).get(...values).n;
   const deliveredToday = db.prepare(`
-    SELECT COALESCE(SUM(items_total + shipping), 0) AS sales, COALESCE(SUM(commission), 0) AS commission, COUNT(*) AS n
+    SELECT COALESCE(SUM(items_total + shipping + gift_wrap), 0) AS sales, COALESCE(SUM(commission), 0) AS commission, COUNT(*) AS n
     FROM seller_orders WHERE status = 'delivered' AND ${REACHED('delivered')} >= ?`).get(today);
   const byStatus = {};
   for (const status of ['pending_payment', 'placed', 'accepted', 'packed', 'shipped']) {
@@ -84,7 +84,7 @@ router.get('/api/admin/dashboard', auth.requireRole('admin'), (req, res) => {
       wait: waitMinutes > WAIT_RED_MINUTES, low: low > 0, shops_waiting: shopsWaiting > 0, open_help: openHelp > 0,
     },
     top_shops: db.prepare(`
-      SELECT sellers.shop_name AS name, SUM(seller_orders.items_total + seller_orders.shipping) AS sales
+      SELECT sellers.shop_name AS name, SUM(seller_orders.items_total + seller_orders.shipping + seller_orders.gift_wrap) AS sales
       FROM seller_orders JOIN sellers ON sellers.id = seller_orders.seller_id
       WHERE seller_orders.status = 'delivered' AND ${REACHED('delivered')} >= ?
       GROUP BY sellers.id ORDER BY sales DESC LIMIT 5`).all(week),
@@ -115,7 +115,7 @@ router.get('/api/seller/dashboard', auth.requireSeller('active', 'suspended'), (
     new_orders: one("SELECT COUNT(*) AS n FROM seller_orders WHERE seller_id = ? AND status = 'placed'", shopId),
     to_pack: one("SELECT COUNT(*) AS n FROM seller_orders WHERE seller_id = ? AND status IN ('accepted', 'packed')", shopId),
     late_orders: late,
-    sales_today: one(`SELECT COALESCE(SUM(items_total + shipping), 0) AS n FROM seller_orders WHERE seller_id = ? AND status = 'delivered' AND ${REACHED('delivered')} >= ?`, shopId, today),
+    sales_today: one(`SELECT COALESCE(SUM(items_total + shipping + gift_wrap), 0) AS n FROM seller_orders WHERE seller_id = ? AND status = 'delivered' AND ${REACHED('delivered')} >= ?`, shopId, today),
     balance: balanceOf(shopId),
     rating: rating.rating,
     review_count: rating.n,

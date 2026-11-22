@@ -19,7 +19,7 @@ const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // a product photo is at most 2 MB
 
 // The product fields the seller and the admin see.
 const PRODUCT_FIELDS = `
-  products.id, products.seller_id, products.name, products.description, products.photo, products.price,
+  products.id, products.seller_id, products.name, products.description, products.photo, products.price, products.giftable,
   products.stock, products.low_stock_level, products.active, products.hidden, products.hidden_reason,
   products.category_id, categories.name AS category_name`;
 
@@ -47,9 +47,9 @@ router.post('/api/seller/products', auth.requireSeller('active'), (req, res) => 
   const form = readProductForm(body);
   const stock = auth.readWholeNumber(body.stock, 'Stock', 0, MAX_STOCK);
   const result = db.prepare(`
-    INSERT INTO products (seller_id, category_id, name, description, price, stock, low_stock_level, active, deleted, hidden, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)`)
-    .run(req.shop.id, form.categoryId, form.name, form.description, form.price, stock, form.lowStockLevel, nowIso());
+    INSERT INTO products (seller_id, category_id, name, description, price, giftable, stock, low_stock_level, active, deleted, hidden, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)`)
+    .run(req.shop.id, form.categoryId, form.name, form.description, form.price, form.giftable, stock, form.lowStockLevel, nowIso());
   res.status(201).json({ ok: true, id: result.lastInsertRowid, message: `${form.name} was added.` });
 });
 
@@ -58,9 +58,9 @@ router.put('/api/seller/products/:id', auth.requireSeller('active'), (req, res) 
   const product = findOwnProduct(req, req.params.id);
   const form = readProductForm(req.body || {});
   db.prepare(`
-    UPDATE products SET name = ?, category_id = ?, price = ?, description = ?, low_stock_level = ?
+    UPDATE products SET name = ?, category_id = ?, price = ?, description = ?, giftable = ?, low_stock_level = ?
     WHERE id = ? AND seller_id = ?`)
-    .run(form.name, form.categoryId, form.price, form.description, form.lowStockLevel, product.id, req.shop.id);
+    .run(form.name, form.categoryId, form.price, form.description, form.giftable, form.lowStockLevel, product.id, req.shop.id);
   res.json({ ok: true, message: `${form.name} was saved.` });
 });
 
@@ -189,7 +189,8 @@ function readProductForm(body) {
   const description = auth.cleanText(body.description);
   if (description.length > 500) throw new HttpError(400, 'Description must be 500 characters or fewer.');
   const lowStockLevel = auth.readWholeNumber(body.low_stock_level, 'Low-stock level', 0, MAX_STOCK);
-  return { name, categoryId, price, description, lowStockLevel };
+  const giftable = body.giftable === true || body.giftable === 1 || body.giftable === '1' ? 1 : 0; // "Giftable" tick box
+  return { name, categoryId, price, description, giftable, lowStockLevel };
 }
 
 // The category chosen in the form. 400 if it is missing or not a real category.

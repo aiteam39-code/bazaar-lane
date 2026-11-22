@@ -5,6 +5,7 @@ const path = require('path');
 
 const PUBLIC_FOLDER = path.join(__dirname, 'public');
 const MARKETPLACE_NAME = process.env.MARKETPLACE_NAME || 'Bazaar Lane';
+const { seasonForRequest } = require('./seasons');
 
 // Text made safe to put inside HTML (names come from sellers, so they are never trusted).
 function escapeHtml(text) {
@@ -27,15 +28,32 @@ function shortDescription(text) {
   return oneLine.length > 160 ? oneLine.slice(0, 157).trimEnd() + '...' : oneLine;
 }
 
-// Sends public/<file> with this title and description (status 200, or another, like 404).
-// fill: { name: text } puts each text (escaped) where the page has {{name}}.
-function sendPage(res, file, { title, description, status = 200, fill = {} }) {
+// Sends public/<file> with this title and description (status 200, or another, like 404). Without a title, the
+// page keeps its own. fill: { name: text } puts each text (escaped) where the page has {{name}}.
+// While a season is on (seasons.js), the page also gets data-season="<key>" on its <html> tag and that season's CSS
+// and script, written in here on the server, so the festival look shows from the first paint. When no season is
+// on, nothing of the season is sent at all.
+function sendPage(res, file, { title, description, status = 200, fill = {} } = {}) {
   let html = fs.readFileSync(path.join(PUBLIC_FOLDER, file), 'utf8');
   for (const [name, text] of Object.entries(fill)) html = html.split(`{{${name}}}`).join(escapeHtml(text));
-  html = html.replace(/<meta name="description"[^>]*>\s*/i, '');
-  html = html.replace(/<title>[\s\S]*?<\/title>/i,
-    `<title>${escapeHtml(title)}</title>\n  <meta name="description" content="${escapeHtml(shortDescription(description))}">`);
+  if (title) {
+    html = html.replace(/<meta name="description"[^>]*>\s*/i, '');
+    html = html.replace(/<title>[\s\S]*?<\/title>/i,
+      `<title>${escapeHtml(title)}</title>\n  <meta name="description" content="${escapeHtml(shortDescription(description))}">`);
+  }
+  html = dressForSeason(html, seasonForRequest(res.req));
   res.status(status).type('html').send(html);
+}
+
+// Writes the season into the page: the <html> tag, its stylesheet (after style.css) and its script (last).
+function dressForSeason(html, season) {
+  if (!season) return html;
+  const key = escapeHtml(season.key);
+  const preview = season.preview ? ' data-season-preview="yes"' : '';
+  return html
+    .replace(/<html lang="en">/i, `<html lang="en" data-season="${key}"${preview}>`)
+    .replace(/<\/head>/i, `  <link rel="stylesheet" href="/seasons/${key}.css">\n</head>`)
+    .replace(/<\/body>/i, `  <script src="/seasons/${key}.js" defer></script>\n</body>`);
 }
 
 module.exports = { sendPage, slugify, pageTitle, escapeHtml, shortDescription, MARKETPLACE_NAME };

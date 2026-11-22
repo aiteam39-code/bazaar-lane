@@ -67,6 +67,8 @@ function partBox(part) {
     box.append(costRow(`${item.quantity} × ${item.name} (${formatMoney(item.unit_price)} each)`, formatMoney(item.line_total)));
   }
   box.append(costRow('Shipping', part.shipping === 0 ? 'Free shipping' : formatMoney(part.shipping)));
+  if (part.gift_wrap) box.append(costRow('Gift wrap', formatMoney(part.gift_wrap)));
+  if (part.gift_message) box.append(make('p', 'gift-message', `Gift message: "${part.gift_message}"`));
   box.append(costRow(`Total from ${part.shop_name}`, formatMoney(part.total), 'shop-total'));
 
   if (part.reason) box.append(make('p', 'reason', 'Reason: ' + part.reason));
@@ -99,6 +101,8 @@ function trackerFor(part) {
 
 // One human sentence for where the part is now.
 function statusSentence(part) {
+  const seasonal = window.SEASON_WORDS && SEASON_WORDS.sentence ? SEASON_WORDS.sentence(part) : null; // a season's warm words
+  if (seasonal) return seasonal;
   const first = part.items[0] ? part.items[0].name.toLowerCase() : 'order';
   const sentences = {
     pending_payment: 'Waiting for your payment.',

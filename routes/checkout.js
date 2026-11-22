@@ -10,6 +10,7 @@ const { commissionFor, shippingFor } = require('../money');
 const { firstStatusFor, logFirstStatus } = require('../orderStatus');
 const mail = require('../mail');
 const payments = require('../payments');
+const { currentSeason } = require('../seasons');
 const { phoneIsChecked } = require('./payments');
 
 const router = express.Router();
@@ -21,13 +22,15 @@ const MOST_OF_ONE_PRODUCT = 20; // quantity is 1 to 20
 // Prices a cart for the cart and checkout pages: the products grouped by shop, each shop's shipping and totals,
 // and the grand total. Products that cannot be bought come back in "problems", each with a message naming the product.
 router.post('/api/cart', (req, res) => {
-  const lines = readCartLines((req.body || {}).items, true);
-  res.json(cartForCustomers(priceCart(lines)));
+  const body = req.body || {};
+  const lines = readCartLines(body.items, true);
+  res.json(cartForCustomers(priceCart(lines, readGifts(body.gifts))));
 });
 
 // What the checkout page may offer: Cash on delivery while the admin has it switched on. Paying online comes in sector 4.
 router.get('/api/checkout/options', (req, res) => {
-  res.json({ cod_enabled: codIsSwitchedOn(), online_enabled: true, provider: payments.PROVIDER });
+  const season = currentSeason();
+  res.json({ cod_enabled: codIsSwitchedOn(), online_enabled: true, provider: payments.PROVIDER, gift_options: Boolean(season), season: season ? season.key : null });
 });
 
 // Places an order: one customer order with one seller order per shop. Answers with the order code and the tracking link.
@@ -39,7 +42,7 @@ router.post('/api/checkout', async (req, res) => {
     throw new HttpError(400, 'Please check your phone with the code we send, then place the order.');
   }
   const lines = readCartLines(body.items, false);
-  const order = placeOrder.immediate(customer, paymentMethod, lines);
+  const order = placeOrder.immediate(customer, paymentMethod, lines, readGifts(body.gifts));
   if (paymentMethod === 'cod') {
     sendOrderEmails(order.id);
     return res.status(201).json({ ok: true, code: order.code, tracking_url: '/track/' + order.token, grand_total: order.grandTotal });
@@ -53,6 +56,21 @@ router.post('/api/checkout', async (req, res) => {
 });
 
 // ---------- Reading what the customer sent ----------
+
+// Gift options, per shop: { "<shop slug>": { wrap: true or false, message: "..." } }. They are only offered while a
+// season is on; otherwise they are ignored. The browser never sends a price: the server uses the shop's own
+// gift-wrap price. A message is at most 200 characters.
+function readGifts(value) {
+  if (!currentSeason() || !value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const gifts = {};
+  for (const [slug, choice] of Object.entries(value).slice(0, MOST_LINES)) {
+    if (!choice || typeof choice !== 'object') continue;
+    const message = auth.cleanText(choice.message);
+    if (message.length > 200) throw new HttpError(400, 'A gift message can be at most 200 characters.');
+    gifts[String(slug)] = { wrap: choice.wrap === true, message };
+  }
+  return gifts;
+}
 
 // Name, 10-digit phone, email and address. Throws a plain message for the first problem.
 function readCustomerDetails(body) {
@@ -137,7 +155,7 @@ function quantityMessage(productId) {
 // ---------- Pricing the cart (the same for the cart page and for checkout) ----------
 
 // Looks up every product, keeps the ones that can be bought, groups them by shop and works out every total.
-function priceCart(lines) {
+function priceCart(lines, gifts = {}) {
   const groupsByShop = new Map();
   const problems = [];
   for (const line of lines) {
@@ -158,11 +176,17 @@ function priceCart(lines) {
   const groups = [...groupsByShop.values()].sort((a, b) => a.shop_name.localeCompare(b.shop_name));
   for (const group of groups) {
     group.shipping = shippingFor(group.items_total, group.shipping_fee, group.free_shipping_over);
-    group.total = group.items_total + group.shipping;
+    const gift = gifts[group.shop_slug] || { wrap: false, message: '' };
+    if (gift.wrap && group.gift_wrap_price === 0) throw new HttpError(400, `${group.shop_name} does not offer gift wrap.`);
+    group.gift_wrap = gift.wrap ? group.gift_wrap_price : 0; // the shop's own price, never the browser's
+    group.gift_message = gift.message || '';
+    group.total = group.items_total + group.shipping + group.gift_wrap;
   }
   const itemsTotal = groups.reduce((sum, group) => sum + group.items_total, 0);
   const shippingTotal = groups.reduce((sum, group) => sum + group.shipping, 0);
-  return { groups, problems, items_total: itemsTotal, shipping_total: shippingTotal, grand_total: itemsTotal + shippingTotal };
+  const giftWrapTotal = groups.reduce((sum, group) => sum + group.gift_wrap, 0);
+  return { groups, problems, items_total: itemsTotal, shipping_total: shippingTotal, gift_wrap_total: giftWrapTotal,
+    grand_total: itemsTotal + shippingTotal + giftWrapTotal };
 }
 
 // A product with its shop's details, or undefined.
@@ -171,7 +195,7 @@ function findProductForCart(productId) {
     SELECT products.id, products.name, products.photo, products.price, products.stock,
            products.active, products.deleted, products.hidden, products.seller_id,
            sellers.shop_name, sellers.slug AS shop_slug, sellers.status AS shop_status,
-           sellers.shipping_fee, sellers.free_shipping_over, sellers.dispatch_days
+           sellers.shipping_fee, sellers.free_shipping_over, sellers.dispatch_days, sellers.gift_wrap_price
     FROM products JOIN sellers ON sellers.id = products.seller_id
     WHERE products.id = ?`).get(productId);
 }
@@ -199,6 +223,7 @@ function groupFor(groupsByShop, product) {
       seller_id: product.seller_id, shop_name: product.shop_name, shop_slug: product.shop_slug,
       shipping_fee: product.shipping_fee, free_shipping_over: product.free_shipping_over,
       delivery: { from_days: product.dispatch_days + 2, to_days: product.dispatch_days + 5 },
+      gift_wrap_price: product.gift_wrap_price,
       lines: [], items_total: 0, shipping: 0, total: 0,
     });
   }
@@ -212,7 +237,9 @@ function cartForCustomers(priced) {
     problems: priced.problems,
     items_total: priced.items_total,
     shipping_total: priced.shipping_total,
+    gift_wrap_total: priced.gift_wrap_total,
     grand_total: priced.grand_total,
+    gift_options: Boolean(currentSeason()),
   };
 }
 
@@ -220,18 +247,18 @@ function cartForCustomers(priced) {
 
 // Saves one customer order with one seller order per shop, and takes the stock off: all of it, or none of it.
 // It runs as one "immediate" transaction, so no other order can change the stock in the middle.
-const placeOrder = db.transaction((customer, paymentMethod, lines) => {
-  const priced = priceCart(lines);
+const placeOrder = db.transaction((customer, paymentMethod, lines, gifts) => {
+  const priced = priceCart(lines, gifts);
   if (priced.problems.length > 0) throw new HttpError(400, priced.problems[0].message);
 
   const token = crypto.randomBytes(32).toString('hex'); // the long random part of the private tracking link
   const now = nowIso();
   const orderId = Number(db.prepare(`
     INSERT INTO customer_orders (code, tracking_token, customer_name, phone, email, address, payment_method,
-                                 items_total, shipping_total, grand_total, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                                 items_total, shipping_total, gift_wrap_total, grand_total, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run('new-' + token, token, customer.name, customer.phone, customer.email, customer.address, paymentMethod,
-      priced.items_total, priced.shipping_total, priced.grand_total, now).lastInsertRowid);
+      priced.items_total, priced.shipping_total, priced.gift_wrap_total, priced.grand_total, now).lastInsertRowid);
   const code = 'BZ-' + (1000 + orderId); // the first order is BZ-1001
   db.prepare('UPDATE customer_orders SET code = ? WHERE id = ?').run(code, orderId);
 
@@ -245,10 +272,10 @@ function addSellerOrder(orderId, group, paymentMethod, now) {
   const rate = commissionRateFor(group.seller_id);
   const status = firstStatusFor(paymentMethod);
   const sellerOrderId = Number(db.prepare(`
-    INSERT INTO seller_orders (customer_order_id, seller_id, status, items_total, shipping, commission_bps, commission,
-                               payment_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?)`)
-    .run(orderId, group.seller_id, status, group.items_total, group.shipping, rate,
+    INSERT INTO seller_orders (customer_order_id, seller_id, status, items_total, shipping, gift_wrap, gift_message,
+                               commission_bps, commission, payment_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?)`)
+    .run(orderId, group.seller_id, status, group.items_total, group.shipping, group.gift_wrap, group.gift_message || null, rate,
       commissionFor(group.items_total, rate), now, now).lastInsertRowid);
   for (const line of group.lines) {
     takeStock(line);

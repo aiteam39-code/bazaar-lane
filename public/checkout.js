@@ -14,6 +14,8 @@ let paymentProvider = 'fake';
 let phoneToken = null;     // given by the server once the phone code is right
 let checkedPhone = null;   // the phone that code was for
 let otpState = { value: '', status: 'idle', message: '' };
+let gifts = {};              // per shop slug: { wrap: true or false, message } (only while a season offers them)
+let giftControlsDrawn = false;
 
 // Loads what the checkout may offer and the priced cart.
 async function loadCheckout() {
@@ -21,10 +23,11 @@ async function loadCheckout() {
   try {
     const [options, priced] = await Promise.all([
       api('GET', '/api/checkout/options'),
-      api('POST', '/api/cart', { items: readCart() }),
+      api('POST', '/api/cart', { items: readCart(), gifts }),
     ]);
     showPaymentChoices(options);
     showSummary(priced);
+    if (priced.gift_options && !giftControlsDrawn) showGiftOptions(priced.groups);
   } catch (error) {
     showMessage(checkoutMessage, error.message, 'error');
   }
@@ -119,6 +122,7 @@ function showSummary(priced) {
       box.append(summaryRow(`${line.quantity} × ${line.name}`, formatMoney(line.line_total)));
     }
     box.append(summaryRow('Shipping', group.shipping === 0 ? 'Free shipping' : formatMoney(group.shipping)));
+    if (group.gift_wrap) box.append(summaryRow('Gift wrap', formatMoney(group.gift_wrap)));
     box.append(summaryRow(`Total from ${group.shop_name}`, formatMoney(group.total), 'shop-total'));
     return box;
   });
@@ -168,6 +172,7 @@ checkoutForm.addEventListener('submit', async (event) => {
       address: document.getElementById('address').value,
       payment_method: chosenPayment(),
       phone_token: phoneToken,
+      gifts: readGiftChoices(),
       items: readCart(),
     });
     rememberOrder({ code: result.code, token: result.tracking_url.split('/')[2], total: result.grand_total, at: new Date().toISOString() });
@@ -184,6 +189,55 @@ checkoutForm.addEventListener('submit', async (event) => {
     updatePlaceButton();
   }
 });
+
+// Gift options (only while a festival season offers them): per shop, "Gift wrap" at the shop's own price (when it
+// offers one) and a gift message of up to 200 characters. Ticking the wrap prices the order again on the server.
+function showGiftOptions(groups) {
+  giftControlsDrawn = true;
+  document.getElementById('gift-shops').replaceChildren(...groups.map((group) => {
+    const box = make('div', 'gift-shop');
+    box.append(make('p', 'gift-shop-name', group.shop_name));
+    gifts[group.shop_slug] = { wrap: false, message: '' };
+    if (group.gift_wrap_price > 0) {
+      const label = make('label', 'choice');
+      const tick = make('input');
+      tick.type = 'checkbox';
+      tick.dataset.giftWrap = group.shop_slug;
+      tick.addEventListener('change', async () => {
+        gifts[group.shop_slug].wrap = tick.checked;
+        try {
+          showSummary(await api('POST', '/api/cart', { items: readCart(), gifts: readGiftChoices() }));
+        } catch (error) {
+          showMessage(formMessage, error.message, 'error');
+        }
+      });
+      label.append(tick, ` Gift wrap (${formatMoney(group.gift_wrap_price)})`);
+      box.append(label);
+    } else {
+      box.append(make('p', 'small muted', 'This shop does not offer gift wrap.'));
+    }
+    const messageLabel = make('label', 'small', 'Gift message (up to 200 characters, printed for the shop)');
+    const message = make('textarea');
+    message.id = 'gift-message-' + group.shop_slug;
+    message.maxLength = 200;
+    message.rows = 2;
+    message.dataset.giftMessage = group.shop_slug;
+    messageLabel.htmlFor = message.id;
+    box.append(messageLabel, message);
+    return box;
+  }));
+  document.getElementById('gift-options').classList.remove('hidden');
+}
+
+// What the customer chose: { slug: { wrap, message } }. Never a price: the server prices the wrap.
+function readGiftChoices() {
+  const choices = {};
+  for (const [slug, gift] of Object.entries(gifts)) {
+    const message = document.querySelector(`[data-gift-message="${CSS.escape(slug)}"]`);
+    choices[slug] = { wrap: gift.wrap, message: message ? message.value : '' };
+  }
+  return choices;
+}
 
 // Razorpay's test checkout (only when test keys are set): its script is loaded from Razorpay, then its result is sent
 // to the server, which checks the signature before the order counts as paid.

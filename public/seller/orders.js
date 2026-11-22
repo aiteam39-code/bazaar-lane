@@ -68,7 +68,14 @@ function orderCard(order) {
   const items = make('ul', 'plain-list');
   for (const item of order.items) items.append(make('li', '', `${item.quantity} × ${item.name} (${formatMoney(item.unit_price)} each) = ${formatMoney(item.line_total)}`));
   card.append(items);
-  card.append(make('p', 'small', `Items ${formatMoney(order.items_total)} + shipping ${formatMoney(order.shipping)} = ${formatMoney(order.total)} · commission ${order.commission_bps / 100}% = ${formatMoney(order.commission)}`));
+  if (order.gift_wrap || order.gift_message) {
+    const gift = make('div', 'gift-note');
+    gift.append(make('strong', '', order.gift_wrap ? `Gift wrap: yes (${formatMoney(order.gift_wrap)})` : 'Gift wrap: no'));
+    if (order.gift_message) gift.append(make('p', 'gift-message', `Gift message to print: "${order.gift_message}"`));
+    card.append(gift);
+  }
+  const wrapText = order.gift_wrap ? ` + gift wrap ${formatMoney(order.gift_wrap)}` : '';
+  card.append(make('p', 'small', `Items ${formatMoney(order.items_total)} + shipping ${formatMoney(order.shipping)}${wrapText} = ${formatMoney(order.total)} · commission ${order.commission_bps / 100}% = ${formatMoney(order.commission)}`));
   if (order.reason) card.append(make('p', 'reason', 'Reason: ' + order.reason));
   if (order.courier) card.append(make('p', 'small', `Sent with ${order.courier}, tracking number ${order.tracking_number}`));
   if (order.help) card.append(helpBox(order));

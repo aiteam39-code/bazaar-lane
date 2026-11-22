@@ -249,6 +249,17 @@ function createTables() {
       verified_until TEXT
     );
 
+    -- Seasons (festival looks): the store dresses up between starts_at and ends_at (local time, 'YYYY-MM-DD HH:MM')
+    -- while enabled. Nothing about prices, stock or orders depends on a season, apart from the optional gift wrap.
+    CREATE TABLE IF NOT EXISTS seasons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      starts_at TEXT NOT NULL,
+      ends_at TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+    );
+
     -- A delivered seller order is booked in the ledger only once.
     CREATE UNIQUE INDEX IF NOT EXISTS ledger_one_booking_per_order ON ledger(seller_order_id, type) WHERE seller_order_id IS NOT NULL;
 
@@ -278,6 +289,23 @@ function addMissingColumns() {
   if (!productColumns.includes('photo')) {
     db.exec('ALTER TABLE products ADD COLUMN photo TEXT'); // the photo's file name in the uploads folder, or empty
   }
+  // Seasons: giftable products, each shop's gift-wrap price (0 = not offered), and the gift wrap and message copied
+  // into each order. Sample products that make good gifts are tagged once, when the column is first added.
+  const giftColumns = {
+    products: { giftable: 'INTEGER NOT NULL DEFAULT 0 CHECK (giftable IN (0, 1))' },
+    sellers: { gift_wrap_price: 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap_price >= 0)' },
+    seller_orders: { gift_wrap: 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap >= 0)', gift_message: 'TEXT' },
+    customer_orders: { gift_wrap_total: 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap_total >= 0)' },
+  };
+  for (const [table, columns] of Object.entries(giftColumns)) {
+    const have = db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
+    for (const [name, definition] of Object.entries(columns)) {
+      if (have.includes(name)) continue;
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+      if (table === 'products' && name === 'giftable') tagSampleGifts();
+      if (table === 'sellers' && name === 'gift_wrap_price') addSampleGiftWrap();
+    }
+  }
   // Sector 4: the provider's id of the payment itself (Razorpay refunds need it).
   const paymentColumns = db.prepare('PRAGMA table_info(payments)').all().map((column) => column.name);
   if (!paymentColumns.includes('paid_ref')) db.exec('ALTER TABLE payments ADD COLUMN paid_ref TEXT');
@@ -297,6 +325,26 @@ function addMissingColumns() {
   if (!sellerColumns.includes('approved_at')) {
     db.exec("UPDATE sellers SET approved_at = created_at WHERE status IN ('active', 'suspended')");
   }
+}
+
+// The sample products that make good gifts (tagged giftable), and the sample shops' gift-wrap prices.
+const SAMPLE_GIFTS = ['Chilli Pickle Gift Box', 'Red Chilli Garlic Chutney', 'Chilli Masala Spice Mix', 'Hanging Clay Lamp',
+  'Clay Diya Set (12)', 'Clay Tea Cups (set of 4)', 'Clay Planter', 'Cotton Stole', 'Cotton Tote Bag', 'Hand-woven Scarf'];
+const SAMPLE_GIFT_WRAP = { 'Chilli Lane Pantry': 3000, 'Terracotta Corner': 5000, 'Handloom Nook': 4000 };
+function tagSampleGifts() {
+  const tag = db.prepare('UPDATE products SET giftable = 1 WHERE name = ?');
+  for (const name of SAMPLE_GIFTS) tag.run(name);
+}
+function addSampleGiftWrap() {
+  const set = db.prepare('UPDATE sellers SET gift_wrap_price = ? WHERE shop_name = ?');
+  for (const [shop, paise] of Object.entries(SAMPLE_GIFT_WRAP)) set.run(paise, shop);
+}
+
+// The seasons, added once when missing: Christmas, 1 to 26 December (until 23:59) of this year.
+function addDefaultSeasons() {
+  const year = new Date().getFullYear();
+  db.prepare("INSERT OR IGNORE INTO seasons (key, name, starts_at, ends_at, enabled) VALUES ('christmas', 'Christmas', ?, ?, 1)")
+    .run(`${year}-12-01 00:00`, `${year}-12-26 23:59`);
 }
 
 // Settings the app needs. Added only when missing, so a change the admin makes is never overwritten.
@@ -326,6 +374,7 @@ function addSampleShopDetails() {
 createTables();
 addMissingColumns();
 addDefaultSettings();
+addDefaultSeasons();
 addSampleShopDetails();
 
 // ---------- Sample data (only for a brand-new, empty database) ----------
@@ -419,6 +468,8 @@ function fillSampleDataIfEmpty() {
   });
   addEverything();
   addSampleShopDetails();
+  tagSampleGifts();
+  addSampleGiftWrap();
   db.exec("UPDATE sellers SET approved_at = created_at WHERE approved_at IS NULL AND status = 'active'");
   return true;
 }

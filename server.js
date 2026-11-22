@@ -60,6 +60,7 @@ app.use(require('./routes/reviews'));
 app.use(require('./routes/commissions'));
 const trust = require('./routes/trust');
 app.use(trust);
+app.use(require('./routes/seasons'));
 app.use(require('./routes/dashboard'));
 
 // Any other /api address does not exist.

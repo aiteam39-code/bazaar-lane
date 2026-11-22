@@ -65,11 +65,12 @@ function checkPortIsFree() {
 }
 
 // Starts the test copy on port 3101 with the test database, and waits until it answers.
-async function startServer() {
+// testClock (optional): an ISO date the test copy uses as "now" for seasons (only a test database can move its clock).
+async function startServer(testClock) {
   let output = '';
   server = spawn(process.execPath, ['server.js'], {
     cwd: __dirname,
-    env: { ...process.env, PORT: String(PORT), DB_FILE: TEST_DB, UPLOADS_DIR: TEST_UPLOADS, RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '' },
+    env: { ...process.env, PORT: String(PORT), DB_FILE: TEST_DB, UPLOADS_DIR: TEST_UPLOADS, RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '', TEST_CLOCK: testClock || '' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   serverRunning = true;
@@ -1810,6 +1811,123 @@ async function runChecks() {
     expect((await state.pantry.call('GET', '/api/admin/orders')).status === 403, 'a seller should get 403 on the admin orders');
     expect((await newBrowser().call('GET', '/api/admin/orders')).status === 401, 'a visitor should get 401 on the admin orders');
     expect((await newBrowser().call('GET', '/admin/orders.html')).status === 302, 'a visitor should be sent from the Orders page to the login page');
+  });
+
+  // ---------- Seasons (Christmas mode). The test copy restarts with a moved clock; the real store never can. ----------
+  const year = new Date().getFullYear();
+  const moveClock = async (iso) => { await stopServer(); await startServer(iso); };
+  const seasonOf = async (browser = newBrowser(), query = '') => (await browser.call('GET', '/api/season' + query)).data.season;
+  const homeHtml = async (browser = newBrowser(), query = '') => String((await browser.call('GET', '/' + query)).data);
+
+  await check('X1', 'The season is on inside its dates (1 to 26 December, until 23:59) and off outside them, by itself, with no deploy', async () => {
+    const moments = [[`${year}-11-30T23:59:00`, null], [`${year}-12-01T00:00:30`, 'christmas'], [`${year}-12-10T12:00:00`, 'christmas'],
+      [`${year}-12-26T23:59:30`, 'christmas'], [`${year}-12-27T00:00:30`, null]];
+    for (const [moment, expected] of moments) {
+      await moveClock(moment);
+      const season = await seasonOf();
+      const html = await homeHtml();
+      expect(season === expected, `at ${moment} the season should be ${expected}, got ${season}`);
+      expect(html.includes('data-season="christmas"') === (expected === 'christmas'), `at ${moment} the page should ${expected ? '' : 'not '}be dressed for Christmas`);
+    }
+  });
+
+  await check('X2', 'With the season off, no Christmas file is loaded and the normal look is back (also when the admin switches it off inside its dates, and for a season whose files are missing)', async () => {
+    await moveClock(`${year}-12-10T12:00:00`);
+    const on = await homeHtml();
+    expect(on.includes('/seasons/christmas.css') && on.includes('/seasons/christmas.js') && (await newBrowser().call('GET', '/christmas')).status === 200,
+      'inside the dates the page loads the Christmas files and /christmas opens');
+    const christmasId = db.prepare("SELECT id FROM seasons WHERE key = 'christmas'").get().id;
+    const off = await state.admin.call('PUT', `/api/admin/seasons/${christmasId}`, { enabled: false });
+    const offPages = [];
+    for (const address of ['/', '/search', '/product/1-green-chilli-pickle', '/cart.html', '/checkout.html', '/store/handloom-nook', '/about']) {
+      offPages.push(String((await newBrowser().call('GET', address)).data));
+    }
+    expect(off.status === 200 && offPages.every((html) => !html.includes('/seasons/') && !html.includes('data-season')), 'switched off: no page loads any Christmas file');
+    expect((await newBrowser().call('GET', '/christmas')).status === 404 && (await seasonOf()) === null, 'switched off: /christmas is not found and no season is on');
+    const options = (await newBrowser().call('GET', '/api/checkout/options')).data;
+    expect(options.gift_options === false, 'switched off: no gift options at checkout');
+    await state.admin.call('PUT', `/api/admin/seasons/${christmasId}`, { enabled: true });
+    db.prepare("INSERT INTO seasons (key, name, starts_at, ends_at, enabled) VALUES ('zzfiles', 'ZZ no files', ?, ?, 1)").run(`${year}-01-01 00:00`, `${year + 1}-12-31 23:59`);
+    db.prepare("UPDATE seasons SET enabled = 0 WHERE key = 'christmas'").run();
+    const missing = await homeHtml();
+    db.prepare("DELETE FROM seasons WHERE key = 'zzfiles'").run();
+    db.prepare("UPDATE seasons SET enabled = 1 WHERE key = 'christmas'").run();
+    expect(!missing.includes('data-season') && !missing.includes('/seasons/'), 'a season whose files are missing is never shown: the store stays normal');
+  });
+
+  await check('X3', 'Gift wrap is priced by the server from the shop\'s own price, copied into the order with the message, shown to the seller and on tracking; a fake wrap price from the browser is ignored; a shop without wrap and a message over 200 characters are refused; outside the season gifts are ignored', async () => {
+    await moveClock(`${year}-12-10T12:00:00`);
+    const items = [cartLine('Red Chilli Garlic Chutney', 1), cartLine('Clay Tea Cups (set of 4)', 1)];
+    const gifts = { 'chilli-lane-pantry': { wrap: true, message: 'ZZ Happy Christmas, Amma', price: 1, gift_wrap: 1 }, 'terracotta-corner': { wrap: true, message: '' } };
+    const order = await placeOrder(items, { gifts, gift_wrap_total: 1, grand_total: 1 });
+    expect(order.answer.status === 201, `the gift order should be placed, got ${show(order.answer)}`);
+    const parts = partsOfToken(order.token);
+    const pantry = parts.find((p) => p.shop_name === 'Chilli Lane Pantry');
+    const pottery = parts.find((p) => p.shop_name === 'Terracotta Corner');
+    // By hand: chutney ₹150 + ₹40 shipping + ₹30 wrap = ₹220; tea cups ₹380 + ₹80 shipping + ₹50 wrap = ₹510; grand ₹730.
+    expect(pantry.gift_wrap === 3000 && pantry.gift_message === 'ZZ Happy Christmas, Amma' && pottery.gift_wrap === 5000, `the wrap is the shops' own price, got ${pantry.gift_wrap} and ${pottery.gift_wrap}`);
+    const customerOrder = db.prepare('SELECT * FROM customer_orders WHERE tracking_token = ?').get(order.token);
+    expect(customerOrder.gift_wrap_total === 8000 && customerOrder.grand_total === 73000 && order.answer.data.grand_total === 73000, `the grand total is ₹730 with wrap, got ${customerOrder.grand_total}`);
+    expect(pantry.commission === Math.floor((15000 * pantry.commission_bps + 5000) / 10000), 'commission is still on the items only');
+    const tracked = (await trackOrder(order.token)).data;
+    const trackedPantry = tracked.parts.find((p) => p.shop_name === 'Chilli Lane Pantry');
+    expect(trackedPantry.gift_wrap === 3000 && trackedPantry.gift_message === 'ZZ Happy Christmas, Amma' && trackedPantry.total === 22000 && tracked.order.gift_wrap_total === 8000, 'tracking shows the wrap and the message');
+    const pantrySeller = await loginAs(demo('Chilli Lane Pantry').email, demo('Chilli Lane Pantry').password);
+    const sellerView = (await pantrySeller.call('GET', '/api/seller/orders?tab=new')).data.orders.find((o) => o.id === pantry.id);
+    expect(sellerView && sellerView.gift_message === 'ZZ Happy Christmas, Amma' && sellerView.gift_wrap === 3000 && sellerView.total === 22000, "the seller's order screen has the message and the wrap");
+    const receipt = db.prepare("SELECT body FROM emails WHERE to_address = 'zz-customer@check.test' AND subject LIKE 'Your % order " + order.answer.data.code + "'").get();
+    expect(receipt && receipt.body.includes('Gift wrap: ₹80') && receipt.body.includes('ZZ Happy Christmas, Amma'), 'the receipt shows the wrap and the message');
+    db.prepare("UPDATE sellers SET gift_wrap_price = 0 WHERE shop_name = 'Handloom Nook'").run();
+    const noWrap = await placeOrder([cartLine('Cotton Stole', 1)], { gifts: { 'handloom-nook': { wrap: true } } });
+    db.prepare("UPDATE sellers SET gift_wrap_price = 4000 WHERE shop_name = 'Handloom Nook'").run(); // put back
+    expect(noWrap.answer.status === 400 && /does not offer gift wrap/.test(noWrap.answer.data.error), 'a shop without gift wrap is refused with a clear message');
+    const longMessage = await placeOrder([cartLine('Cotton Stole', 1)], { gifts: { 'handloom-nook': { wrap: false, message: 'x'.repeat(201) } } });
+    expect(longMessage.answer.status === 400 && /200 characters/.test(longMessage.answer.data.error), 'a message over 200 characters is refused');
+    const priced = (await newBrowser().call('POST', '/api/cart', { items, gifts })).data;
+    expect(priced.gift_wrap_total === 8000 && priced.grand_total === 73000 && priced.gift_options === true, 'the bag prices the wrap the same way');
+    await moveClock(`${year}-12-27T10:00:00`); // the phone stays checked (its code works 30 minutes)
+    const after = await placeOrder([cartLine('Red Chilli Garlic Chutney', 1)], { gifts });
+    const afterPart = partsOfToken(after.token)[0];
+    expect(after.answer.status === 201 && afterPart.gift_wrap === 0 && !afterPart.gift_message, 'after the season, gift options are ignored');
+    expect(db.prepare('SELECT gift_wrap, gift_message FROM seller_orders WHERE id = ?').get(pantry.id).gift_wrap === 3000, 'orders placed during Christmas keep their wrap and message');
+  });
+
+  await check('X4', '"Arrives before Christmas" appears only when today + the shop\'s dispatch days + 5 days is on or before 24 December, and only during the season', async () => {
+    const pickle = productId('Green Chilli Pickle');   // Chilli Lane Pantry: 2 dispatch days
+    const pot = productId('Clay Planter');              // Terracotta Corner: 3 dispatch days
+    const arrives = async (id) => (await newBrowser().call('GET', `/api/products/${id}`)).data.arrives_before_christmas;
+    const cases = [[`${year}-12-10T09:00:00`, true, true], [`${year}-12-17T09:00:00`, true, false], [`${year}-12-18T09:00:00`, false, false],
+      [`${year}-12-23T09:00:00`, false, false], [`${year}-11-20T09:00:00`, false, false]];
+    for (const [moment, pantryShows, potteryShows] of cases) {
+      await moveClock(moment);
+      const [a, b] = [await arrives(pickle), await arrives(pot)];
+      expect(a === pantryShows && b === potteryShows, `at ${moment}: 2-day shop ${a} (want ${pantryShows}), 3-day shop ${b} (want ${potteryShows})`);
+    }
+    const script = String((await newBrowser().call('GET', '/product.js')).data);
+    expect(script.includes('arrives_before_christmas') && !/countdown|hurry/i.test(script), 'the page shows the line only when the server says it is true, with no countdown or hurry');
+  });
+
+  await check('X5', 'A customer cannot switch seasons or use preview; the admin can preview a season early (only in their own browser)', async () => {
+    await moveClock(`${year}-11-20T09:00:00`);
+    const christmasId = db.prepare("SELECT id FROM seasons WHERE key = 'christmas'").get().id;
+    expect((await newBrowser().call('PUT', `/api/admin/seasons/${christmasId}`, { enabled: false })).status === 401, 'a visitor cannot switch a season (401)');
+    expect((await state.terracotta.call('PUT', `/api/admin/seasons/${christmasId}`, { enabled: false })).status === 403, 'a seller cannot switch a season (403)');
+    expect((await state.terracotta.call('GET', '/api/admin/seasons')).status === 403, 'a seller cannot see the Seasons page data');
+    expect((await seasonOf(newBrowser(), '?preview=christmas')) === null && !(await homeHtml(newBrowser(), '?preview=christmas')).includes('data-season'), "a customer's ?preview does nothing");
+    expect((await seasonOf(state.terracotta, '?preview=christmas')) === null, "a seller's ?preview does nothing either");
+    const preview = await homeHtml(state.admin, '?preview=christmas');
+    expect(preview.includes('data-season="christmas"') && preview.includes('data-season-preview="yes"') && (await seasonOf()) === null, "the admin's preview dresses only the admin's page");
+    expect((await state.admin.call('GET', '/christmas?preview=christmas')).status === 200 && (await newBrowser().call('GET', '/christmas')).status === 404, 'the admin can preview /christmas; customers cannot open it before the season');
+    const bad = await state.admin.call('PUT', `/api/admin/seasons/${christmasId}`, { starts_at: '2026-13-01 00:00', ends_at: 'soon' });
+    expect(bad.status === 400, 'bad dates are refused with a clear message');
+    const keyword = (await newBrowser().call('GET', '/api/products?search=xmas')).data.products;
+    expect(keyword.length > 0 && keyword.every((p) => p.giftable === 1), 'typing "xmas" shows giftable products first');
+  });
+
+  await check('X6', 'Every earlier item still passes with the season system in place', async () => {
+    await moveClock(''); // back to the real clock for the last checks
+    const failed = results.filter((result) => !result.pass).map((result) => result.item);
+    expect(failed.length === 0, `these earlier items failed: ${failed.join(', ')}`);
   });
 
   await check('G1', 'Stop the app and start it again: shops, logins, products, categories, settings, orders, payments, refunds, the ledger, reviews, help, reports, messages, the newsletter, emails and views are all still there, a logged-in admin stays logged in, and tracking links still work', async () => {

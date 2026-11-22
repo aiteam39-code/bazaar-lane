@@ -194,7 +194,7 @@ async function refund(sellerOrderId) {
   const payment = db.prepare("SELECT * FROM payments WHERE customer_order_id = ? AND status = 'paid' ORDER BY id DESC LIMIT 1")
     .get(part.customer_order_id);
   if (!payment) throw new HttpError(400, 'No paid payment was found for this order.');
-  const amount = part.items_total + part.shipping;
+  const amount = part.items_total + part.shipping + part.gift_wrap; // the part's whole total, gift wrap too
   const alreadyRefunded = db.prepare('SELECT COALESCE(SUM(amount), 0) AS n FROM refunds WHERE payment_id = ?').get(payment.id).n;
   if (amount > payment.amount - alreadyRefunded) throw new HttpError(400, 'The refund would be bigger than what is left of the payment.');
 

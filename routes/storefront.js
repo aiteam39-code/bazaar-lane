@@ -6,6 +6,7 @@ const { db, photoUrl, nowIso } = require('../db');
 const auth = require('../auth');
 const { sendPage, slugify, pageTitle, MARKETPLACE_NAME } = require('../pages');
 const { formatMoney } = require('../money');
+const { currentSeason, seasonNow } = require('../seasons');
 
 const router = express.Router();
 const { HttpError } = auth;
@@ -25,7 +26,7 @@ const RATING_FIELDS = `
 // The product fields customers get: no stock numbers (only "few_left" when it is 5 or fewer), no seller email or
 // phone, nothing about hiding.
 const CUSTOMER_FIELDS = `
-  products.id, products.name, products.description, products.photo, products.price, products.created_at,
+  products.id, products.name, products.description, products.photo, products.price, products.created_at, products.giftable,
   products.stock = 0 AS sold_out, CASE WHEN products.stock BETWEEN 1 AND ${FEW_LEFT} THEN products.stock END AS few_left,
   products.category_id, categories.name AS category_name,
   sellers.shop_name, sellers.slug AS shop_slug, sellers.city, ${RATING_FIELDS}`;
@@ -80,8 +81,12 @@ router.get('/api/categories', (req, res) => {
 // limit (1 to 100). At most 100 products; "more" says if there were more.
 router.get('/api/products', (req, res) => {
   const filters = readFilters(req.query);
-  const where = [`${CUSTOMER_CAN_SEE}`, 'products.stock > 0', "search_text(products.name) LIKE ? ESCAPE '\\'"];
+  // Typing "gift", "gifts", "christmas" or "xmas" finds every giftable product (and names with the word), giftable first.
+  const giftWords = /^(gifts?|christmas|xmas)$/i.test(filters.search);
+  const where = [`${CUSTOMER_CAN_SEE}`, 'products.stock > 0',
+    giftWords ? "(products.giftable = 1 OR search_text(products.name) LIKE ? ESCAPE '\\')" : "search_text(products.name) LIKE ? ESCAPE '\\'"];
   const values = [auth.likePattern(filters.search)];
+  if (filters.giftable) where.push('products.giftable = 1');
   if (filters.category) { where.push('products.category_id = ?'); values.push(filters.category.id); }
   if (filters.priceMin !== null) { where.push('products.price >= ?'); values.push(filters.priceMin); }
   if (filters.priceMax !== null) { where.push('products.price <= ?'); values.push(filters.priceMax); }
@@ -99,7 +104,7 @@ router.get('/api/products', (req, res) => {
     values.push(filters.rating);
   }
   const sql = `SELECT ${CUSTOMER_FIELDS} ${FROM_PRODUCTS} WHERE ${where.join(' AND ')}`;
-  const rows = db.prepare(`${sql} ORDER BY ${order} LIMIT ?`).all(...values, filters.limit + 1);
+  const rows = db.prepare(`${sql} ORDER BY ${giftWords ? 'products.giftable DESC, ' : ''}${order} LIMIT ?`).all(...values, filters.limit + 1);
   res.json({
     search: filters.search,
     category: filters.category,
@@ -127,6 +132,7 @@ router.get('/api/products/:id', (req, res) => {
     product,
     shop: shopForCustomers,
     delivery: { from_days: shop.dispatch_days + 2, to_days: shop.dispatch_days + 5 },
+    arrives_before_christmas: arrivesBeforeChristmas(shop.dispatch_days),
     reviews: visibleReviews(row.id),
     more_from_shop: relatedProducts('products.seller_id = ?', shopId, row.id),
     similar: relatedProducts('products.category_id = ? AND products.seller_id <> ' + Number(shopId), row.category_id, row.id),
@@ -207,6 +213,11 @@ router.get('/product/:idAndSlug', (req, res) => {
   });
 });
 
+// The other customer pages, sent by the server so they can wear the season too (they keep their own titles).
+router.get(['/cart.html', '/checkout.html', '/orders.html', '/find-my-orders.html', '/login.html'], (req, res) => {
+  sendPage(res, req.path.slice(1));
+});
+
 // "Sell with us": why sell here, the 3 steps, the commission and the early-bird offer.
 router.get('/sell', (req, res) => {
   sendPage(res, 'sell.html', {
@@ -216,6 +227,16 @@ router.get('/sell', (req, res) => {
 });
 
 // ---------- Helpers ----------
+
+// "Arrives before Christmas", only while the Christmas season is on and only when it is TRUE: today + the shop's
+// dispatch days + 5 days (the slowest delivery) is on or before 24 December.
+function arrivesBeforeChristmas(dispatchDays) {
+  const season = currentSeason();
+  if (!season || season.key !== 'christmas') return false;
+  const today = seasonNow();
+  const latest = new Date(today.getFullYear(), today.getMonth(), today.getDate() + dispatchDays + 5);
+  return latest <= new Date(today.getFullYear(), 11, 24);
+}
 
 // The filters from the page address. Bad values are refused with a plain message.
 function readFilters(query) {
@@ -242,6 +263,7 @@ function readFilters(query) {
     rating,
     sort,
     limit,
+    giftable: text(query.giftable) === '1',
   };
 }
 

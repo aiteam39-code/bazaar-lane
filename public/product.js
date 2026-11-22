@@ -19,7 +19,8 @@ async function loadProduct() {
 }
 
 // Fills the page.
-function showProduct({ product, shop, delivery, reviews, more_from_shop: more, similar }) {
+function showProduct(data) {
+  const { product, shop, delivery, reviews, more_from_shop: more, similar } = data;
   const photo = document.getElementById('product-photo');
   photo.src = product.photo_url || placeholderArt(product.id);
   photo.alt = product.name;
@@ -44,6 +45,7 @@ function showProduct({ product, shop, delivery, reviews, more_from_shop: more, s
   stock.classList.toggle('is-few', Boolean(product.few_left));
   showBuyRow(product);
   showFacts(shop, delivery);
+  document.getElementById('arrives-christmas').classList.toggle('hidden', !data.arrives_before_christmas);
   document.getElementById('product-description').textContent = product.description || 'No description yet.';
   showReviews(product, reviews);
   showRelated('more', more);

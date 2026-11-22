@@ -1,0 +1,154 @@
+/* seasons/christmas.css - the Christmas look, loaded ONLY while the Christmas season is on (the server writes the link
+   into the page and data-season="christmas" on <html>). It sits on top of the Interaction Kit: it only points the kit's
+   own colour tokens at a Christmas palette and adds a few decorations. Delete this file (with christmas.js) and the store
+   is simply normal.
+   Palette: deep pine green, berry red, warm cream, soft gold. Every text pair is at least 4.5:1 (checked for light and
+   night), marks at least 3:1, and berry red is still the ONE action colour per screen.
+   Decorations are our own inline SVG (no emoji, no clip art, no characters). Reduced motion keeps every decoration and
+   drops the movement (no twinkling, no snowfall). */
+
+/* ---------- The palette ---------- */
+html[data-season="christmas"] {
+  --canvas: #fbf6ec;          /* warm cream */
+  --surface: #fffdf8;
+  --surface-sunk: #f2eadb;
+  --ink: #14342a;             /* deep pine green */
+  --ink-muted: #4d5d53;
+  --line: #e5dac6;
+  --line-strong: #7d8a80;
+  --accent: #b3152f;          /* berry red: Add to bag, the one action per screen */
+  --on-accent: #fffaf0;
+  --accent-soft: #f9e4e3;
+  --accent-ink: #9b1027;
+  --inverse: #14342a;
+  --on-inverse: #fbf6ec;
+  --on-inverse-muted: #b7c8bd;
+  --success: #14654f;
+  --success-soft: #e1f0e8;
+  --danger: #a3271b;
+  --danger-soft: #fbe4df;
+  --focus: #14342a;
+  --chart-1: #14342a;
+  --chart-2: #9b1027;
+  --chart-3: #b8902a;
+  --season-gold: #c9a227;     /* soft gold: decorations only, never text */
+  --season-snow: #ffffff;
+}
+html[data-season="christmas"][data-theme="night"] {
+  --canvas: #0d1a15;
+  --surface: #15241e;
+  --surface-sunk: #1e3029;
+  --ink: #f5efe3;
+  --ink-muted: #b4c3b9;
+  --line: #26392f;
+  --line-strong: #71877b;
+  --accent: #e5506a;
+  --on-accent: #1b0a0e;
+  --accent-soft: #3b1a21;
+  --accent-ink: #ff98a9;
+  --inverse: #f5efe3;
+  --on-inverse: #14342a;
+  --on-inverse-muted: #5a6b61;
+  --success: #73d3b3;
+  --success-soft: #12342b;
+  --danger: #ff8f80;
+  --danger-soft: #3d1712;
+  --focus: #f5efe3;
+  --chart-1: #f5efe3;
+  --chart-2: #ff98a9;
+  --chart-3: #c9a227;
+  --season-snow: #e9f1ee;
+}
+
+/* ---------- Our own pictures (inline SVG) ---------- */
+html[data-season="christmas"] {
+  /* a string of small warm lights */
+  --xmas-lights: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='22'%3E%3Cpath d='M0 4 Q30 12 60 4 T120 4' fill='none' stroke='%2314342a' stroke-width='1.4'/%3E%3Cg%3E%3Crect x='13' y='8' width='4' height='3' fill='%2314342a'/%3E%3Cellipse cx='15' cy='15' rx='3.6' ry='5' fill='%23e9b949'/%3E%3Crect x='43' y='8' width='4' height='3' fill='%2314342a'/%3E%3Cellipse cx='45' cy='15' rx='3.6' ry='5' fill='%23d7465a'/%3E%3Crect x='73' y='8' width='4' height='3' fill='%2314342a'/%3E%3Cellipse cx='75' cy='15' rx='3.6' ry='5' fill='%23f4d58d'/%3E%3Crect x='103' y='8' width='4' height='3' fill='%2314342a'/%3E%3Cellipse cx='105' cy='15' rx='3.6' ry='5' fill='%2374b49a'/%3E%3C/g%3E%3C/svg%3E");
+  /* snow resting on an edge */
+  --xmas-snow-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='10'%3E%3Cpath d='M0 0h80v4c-6 0-7 5-13 5s-7-4-13-4-6 3-12 3-8-5-14-5-6 4-12 4S7 4 0 5z' fill='white'/%3E%3C/svg%3E");
+  /* a small pine sprig with two berries */
+  --xmas-sprig: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg stroke='%231f5a43' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 20 L18 6'/%3E%3Cpath d='M7 17l-3-1M7 17l1 3M10 14l-4-1M10 14l1 4M13 11l-4-1M13 11l1 4M16 8l-3-1M16 8l1 3'/%3E%3C/g%3E%3Ccircle cx='17.5' cy='16.5' r='2.2' fill='%23b3152f'/%3E%3Ccircle cx='20.5' cy='13.5' r='2' fill='%23b3152f'/%3E%3C/svg%3E");
+  /* holly: two leaves and three berries */
+  --xmas-holly: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 18'%3E%3Cpath d='M13 10C9 6 5 8 1 4c1 3 0 5 2 6s2 3 1 5c3-2 5-1 9-5z' fill='%231f5a43'/%3E%3Cpath d='M15 10c4-4 8-2 12-6-1 3 0 5-2 6s-2 3-1 5c-3-2-5-1-9-5z' fill='%23276b52'/%3E%3Ccircle cx='12' cy='12' r='2.2' fill='%23b3152f'/%3E%3Ccircle cx='15.6' cy='12.6' r='2.2' fill='%23c4213b'/%3E%3Ccircle cx='13.8' cy='9.4' r='2' fill='%23a3132b'/%3E%3C/svg%3E");
+  /* a snow cap for a card's corner */
+  --xmas-snow-cap: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='46' height='16'%3E%3Cpath d='M0 0h46c0 3-4 5-8 5-2 4-7 3-10 1-3 5-9 6-12 2-4 3-10 2-12-2C2 6 0 4 0 0z' fill='white'/%3E%3C/svg%3E");
+}
+
+/* ---------- The header: snow on the top edge, lights along the bottom, a sprig beside the name ---------- */
+html[data-season="christmas"] .site-header { position: relative; z-index: 2; }
+html[data-season="christmas"] .site-header::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 10px; pointer-events: none;
+  background: var(--xmas-snow-edge) left top / 80px 10px repeat-x;
+}
+html[data-season="christmas"] .site-header::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -14px; height: 22px; pointer-events: none;
+  background: var(--xmas-lights) left top / 120px 22px repeat-x;
+  animation: xmas-twinkle 3.6s ease-in-out infinite;
+}
+@keyframes xmas-twinkle {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50% { opacity: 0.78; filter: brightness(1.18); }
+}
+html[data-season="christmas"] .site-header .brand::before {
+  content: ''; display: inline-block; width: 20px; height: 20px; margin-right: 6px; vertical-align: -3px;
+  background: var(--xmas-sprig) center / contain no-repeat;
+}
+html[data-season="christmas"] .shop-main { padding-top: 26px; }
+
+/* ---------- Holly beside section headings ---------- */
+html[data-season="christmas"] main h2::after {
+  content: ''; display: inline-block; width: 22px; height: 14px; margin-left: 8px; vertical-align: 0;
+  background: var(--xmas-holly) center / contain no-repeat;
+}
+
+/* ---------- Snow resting on product cards ---------- */
+html[data-season="christmas"] .ik-card { position: relative; }
+html[data-season="christmas"] .ik-card::before {
+  content: ''; position: absolute; left: 6px; top: -5px; width: 46px; height: 16px; z-index: 3; pointer-events: none;
+  background: var(--xmas-snow-cap) left top / 46px 16px no-repeat;
+  filter: drop-shadow(0 1px 0 rgba(20, 52, 42, 0.18));
+}
+
+/* ---------- The carousel: a soft spotlight and snow under the middle product ---------- */
+html[data-season="christmas"] .carousel-stage::before {
+  content: ''; position: absolute; left: 50%; top: 0; width: min(90%, 460px); height: 100%; transform: translateX(-50%);
+  background: radial-gradient(ellipse at 50% 30%, rgba(255, 244, 214, 0.75), rgba(255, 244, 214, 0) 65%);
+  pointer-events: none;
+}
+html[data-season="christmas"][data-theme="night"] .carousel-stage::before {
+  background: radial-gradient(ellipse at 50% 30%, rgba(201, 162, 39, 0.22), rgba(201, 162, 39, 0) 65%);
+}
+html[data-season="christmas"] .carousel-stage::after {
+  content: ''; position: absolute; left: 50%; bottom: 14px; width: min(70%, 320px); height: 26px; transform: translateX(-50%);
+  border-radius: 50%; background: radial-gradient(ellipse at center, var(--season-snow), rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+}
+
+/* ---------- The home page: the Christmas hero band and gift rows (made by christmas.js) ---------- */
+.xmas-hero {
+  position: relative; overflow: hidden; margin: var(--space-4) 0 var(--space-6); padding: var(--space-5);
+  border-radius: var(--radius-lg); background: var(--inverse); color: var(--on-inverse);
+}
+.xmas-hero h2 { font: var(--text-type-display); font-size: clamp(26px, 6vw, 36px); line-height: 1.15; margin: 0 0 var(--space-2); max-width: 18ch; }
+html[data-season="christmas"] .xmas-hero h2::after { display: none; }
+.xmas-hero p { color: var(--on-inverse-muted); margin: 0 0 var(--space-4); max-width: 46ch; }
+.xmas-hero { padding-bottom: calc(var(--space-5) + 34px); }
+.xmas-hero::after {
+  content: ''; position: absolute; right: 14px; bottom: 12px; width: 64px; height: 42px; opacity: 0.95; pointer-events: none;
+  background: var(--xmas-holly) center / contain no-repeat;
+}
+/* The hero's "Shop gifts" is the home page's one accent, so "Start selling" steps back for the season. */
+html[data-season="christmas"] .sell-band .button.accent { background: var(--surface); color: var(--ink); border: 2px solid var(--line-strong); }
+
+/* ---------- The bag: a gift sack (christmas.js swaps the icon; the rolling count stays) ---------- */
+html[data-season="christmas"] .bag-link svg { color: var(--accent-ink); }
+
+/* ---------- Snowfall and the footer switch ---------- */
+.xmas-snow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+html[data-season="christmas"] .shop-main, html[data-season="christmas"] .site-footer { position: relative; z-index: 1; }
+
+/* ---------- Reduced motion: every state change stays, the movement goes ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html[data-season="christmas"] .site-header::after { animation: none; }
+  .xmas-snow { display: none; }
+}
