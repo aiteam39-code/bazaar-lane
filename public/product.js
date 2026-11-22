@@ -40,6 +40,7 @@ function showProduct(data) {
   mountKit(document.getElementById('product-price'), IK.RollingNumber, {
     value: product.price / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: false,
   });
+  document.getElementById('product-size').textContent = product.size_label || '';
   const stock = document.getElementById('product-stock');
   stock.textContent = product.stock_words;
   stock.classList.toggle('is-few', Boolean(product.few_left));

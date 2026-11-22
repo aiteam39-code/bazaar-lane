@@ -27,6 +27,7 @@ const RATING_FIELDS = `
 // phone, nothing about hiding.
 const CUSTOMER_FIELDS = `
   products.id, products.name, products.description, products.photo, products.price, products.created_at, products.giftable,
+  products.size_label, sellers.dispatch_days,
   products.stock = 0 AS sold_out, CASE WHEN products.stock BETWEEN 1 AND ${FEW_LEFT} THEN products.stock END AS few_left,
   products.category_id, categories.name AS category_name,
   sellers.shop_name, sellers.slug AS shop_slug, sellers.city, ${RATING_FIELDS}`;
@@ -341,8 +342,10 @@ function queryPart(req) {
 function customerProduct(row) {
   const { photo, ...product } = row;
   const soldOut = row.sold_out === 1;
+  const { dispatch_days: dispatchDays, ...rest } = product;
   return {
-    ...product,
+    ...rest,
+    delivery: dispatchDays ? { from_days: dispatchDays + 2, to_days: dispatchDays + 5 } : undefined,
     sold_out: soldOut,
     photo_url: photoUrl(photo),
     url: productAddress(row),

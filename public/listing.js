@@ -7,7 +7,7 @@ const SORT_CHOICES = [
   ['name', 'A to Z'], ['newest', 'Newest'], ['price_asc', 'Price, low to high'], ['price_desc', 'Price, high to low'],
   ['top_rated', 'Top rated'],
 ];
-const FILTER_KEYS = ['search', 'price_min', 'price_max', 'shop', 'city', 'rating', 'sort'];
+const FILTER_KEYS = ['search', 'price_min', 'price_max', 'shop', 'city', 'rating', 'sort', 'giftable'];
 
 // The filters in the page address now.
 function filtersFromAddress() {

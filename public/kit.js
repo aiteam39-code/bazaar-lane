@@ -63,14 +63,55 @@ function addToBag(product, quantity = 1) {
 }
 
 // The bag count in the header rolls when it changes (RollingNumber).
+// The bag in the header: the count and the total roll when they change; the button is greyed out while the bag is
+// empty. The total always comes from the server (POST /api/cart), never from the browser's own maths.
+let bagTotalAsk = 0;
 function drawBagCount() {
   const count = cartCount();
   document.querySelectorAll('[data-bag-count]').forEach((element) => {
     mountKit(element, IK.RollingNumber, { value: count, animateOnMount: false });
   });
   document.querySelectorAll('[data-bag-link]').forEach((link) => {
-    link.setAttribute('aria-label', `Bag, ${count} item${count === 1 ? '' : 's'}`);
+    link.classList.toggle('is-empty', count === 0);
+    link.setAttribute('aria-label', count === 0 ? 'Bag, empty' : `Bag, ${count} item${count === 1 ? '' : 's'}`);
   });
+  drawBagTotal(count);
+}
+
+async function drawBagTotal(count) {
+  const totals = document.querySelectorAll('[data-bag-total]');
+  if (totals.length === 0) return;
+  const ask = ++bagTotalAsk;
+  let paise = 0;
+  if (count > 0) {
+    try {
+      paise = (await api('POST', '/api/cart', { items: readCart() })).grand_total;
+    } catch (e) {
+      paise = 0;
+    }
+  }
+  if (ask !== bagTotalAsk) return; // a newer change is on its way
+  totals.forEach((element) => {
+    element.classList.toggle('hidden', count === 0);
+    mountKit(element, IK.RollingNumber, { value: paise / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: false });
+  });
+}
+
+// Sets how many of one product are in the bag (0 takes it out). Returns the new quantity.
+function setBagQuantity(productId, quantity) {
+  const cart = readCart();
+  const line = cart.find((l) => l.product_id === productId);
+  const wanted = Math.max(0, Math.min(MOST_OF_ONE, quantity));
+  if (!line && wanted > 0) cart.push({ product_id: productId, quantity: wanted });
+  if (line) line.quantity = wanted;
+  saveCart(cart.filter((l) => l.quantity > 0));
+  return wanted;
+}
+
+// How many of one product are in the bag now.
+function bagQuantityOf(productId) {
+  const line = readCart().find((l) => l.product_id === productId);
+  return line ? line.quantity : 0;
 }
 
 // ---------- The wishlist (saved in this browser only) ----------
@@ -164,13 +205,19 @@ function starRow(rating) {
 
 // ---------- The customer header and footer ----------
 
-// The header of every customer page: the name, a big search box, the Categories menu, "Sell on Bazaar Lane",
-// My orders, and the bag with its rolling count.
+// The header of every customer page (it stays on top while scrolling): the name and the delivery line (the real
+// range from the open shops' dispatch days, and the customer's own city or PIN code, saved in this browser), a big
+// search box whose example word changes every 3 seconds (real product words; it stops while the box has focus and
+// with reduced motion), Log in, and the bag with its rolling count and total (greyed out when empty). Under them:
+// the Categories menu, "Sell on Bazaar Lane" and My orders.
+const PLACE_KEY = 'bazaarPlace';
 function buildCustomerHeader(host) {
   const bar = make('div', 'bar shop-bar');
   const brand = make('a', 'brand', siteName());
   brand.href = '/';
   brand.classList.add('site-name');
+  const brandBox = make('div', 'brand-box');
+  brandBox.append(brand, deliveryLine());
 
   const search = make('form', 'header-search');
   search.action = '/search';
@@ -189,6 +236,19 @@ function buildCustomerHeader(host) {
   go.type = 'submit';
   search.append(label, box, go);
 
+  const right = make('div', 'header-right');
+  const login = make('a', 'login-link', 'Log in');
+  login.href = '/login.html';
+  const bag = make('a', 'bag-link');
+  bag.href = '/cart.html';
+  bag.dataset.bagLink = '';
+  const count = make('span', 'bag-count');
+  count.dataset.bagCount = '';
+  const total = make('span', 'bag-total hidden');
+  total.dataset.bagTotal = '';
+  bag.append(kitIcon('bag'), make('span', 'bag-word', 'Bag'), count, total);
+  right.append(login, bag);
+
   const nav = make('nav', 'header-links');
   nav.setAttribute('aria-label', 'Shop');
   const menu = make('details', 'category-menu');
@@ -199,18 +259,102 @@ function buildCustomerHeader(host) {
   sell.href = '/sell';
   const orders = make('a', '', 'My orders');
   orders.href = '/orders.html';
-  const bag = make('a', 'bag-link');
-  bag.href = '/cart.html';
-  bag.dataset.bagLink = '';
-  const count = make('span', 'bag-count');
-  count.dataset.bagCount = '';
-  bag.append(kitIcon('bag'), make('span', 'bag-word', 'Bag'), count);
-  nav.append(menu, sell, orders, bag);
+  nav.append(menu, sell, orders);
 
-  bar.append(brand, search, nav);
+  bar.append(brandBox, search, right, nav);
   host.replaceChildren(bar);
   fillCategoryMenu(list);
   drawBagCount();
+  fillHeaderFacts(host, box);
+  compactOnScroll(host);
+}
+
+// On a phone the header shrinks to the name, bag and search once the customer has scrolled down (CSS decides the
+// width), so the sticky header never covers much of the page. The space it gives up is kept below it as a margin, so
+// the page itself never jumps.
+function compactOnScroll(host) {
+  let compact = false;
+  const update = () => {
+    const wanted = window.scrollY > 120 || (compact && window.scrollY > 40); // a gap, so it never flickers
+    if (wanted === compact) return;
+    compact = wanted;
+    const before = host.offsetHeight;
+    host.classList.toggle('is-compact', compact);
+    host.style.marginBottom = compact ? Math.max(before - host.offsetHeight, 0) + 'px' : '';
+  };
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+}
+
+// "Delivery in 4 to 8 days" and the customer's place ("Jaipur 302001"), with a small form to change the place.
+function deliveryLine() {
+  const line = make('details', 'delivery-line');
+  const summary = make('summary', '');
+  const days = make('strong', 'delivery-days', 'Delivery in a few days');
+  const place = make('span', 'delivery-place', readPlace() || 'Add your city or PIN code');
+  summary.append(days, place);
+  const form = make('form', 'place-form');
+  const label = make('label', '', 'Your city or 6-digit PIN code');
+  const input = make('input');
+  input.id = 'place-box';
+  input.maxLength = 40;
+  input.value = readPlace();
+  input.autocomplete = 'postal-code';
+  label.htmlFor = input.id;
+  const save = make('button', 'secondary', 'Save');
+  save.type = 'submit';
+  const note = make('p', 'small muted', 'Kept only in this browser. Each shop still shows its own delivery days.');
+  form.append(label, input, save, note);
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const text = input.value.trim().replace(/\s+/g, ' ').slice(0, 40);
+    try {
+      if (text) localStorage.setItem(PLACE_KEY, text);
+      else localStorage.removeItem(PLACE_KEY);
+    } catch (e) {
+      // Saving is blocked: it still shows on this page.
+    }
+    place.textContent = text || 'Add your city or PIN code';
+    line.open = false;
+  });
+  line.append(summary, form);
+  return line;
+}
+
+function readPlace() {
+  try {
+    return localStorage.getItem(PLACE_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+// Fills the real delivery days and starts the search box's example words.
+async function fillHeaderFacts(host, box) {
+  let facts = null;
+  try {
+    facts = await api('GET', '/api/header');
+  } catch (e) {
+    return;
+  }
+  const days = host.querySelector('.delivery-days');
+  if (facts.delivery) days.textContent = `Delivery in ${facts.delivery.from_days} to ${facts.delivery.to_days} days`;
+  rotateSearchWords(box, facts.search_words || []);
+}
+
+// 'Search "pickle"', then another real word every 3 seconds; not while the box has focus or text, nor with
+// reduced motion (then the first word stays).
+function rotateSearchWords(box, words) {
+  if (words.length === 0) return;
+  let index = 0;
+  const show = () => { box.placeholder = `Search "${words[index % words.length]}"`; };
+  show();
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  setInterval(() => {
+    if (document.activeElement === box || box.value || document.hidden) return;
+    index += 1;
+    show();
+  }, 3000);
 }
 
 // The Categories menu: every category with its clean address.
@@ -267,6 +411,7 @@ const STAFF_LINKS = {
     ['Payments', '/admin/payments.html'], ['Commissions', '/admin/commissions.html'], ['Payouts', '/admin/payouts.html'],
     ['Help requests', '/admin/help.html'], ['Reviews', '/admin/reviews.html'], ['Reports', '/admin/reports.html'],
     ['Messages', '/admin/messages.html'], ['Outbox', '/admin/outbox.html'], ['Seasons', '/admin/seasons.html'],
+    ['Promo cards', '/admin/promo-cards.html'],
   ],
 };
 

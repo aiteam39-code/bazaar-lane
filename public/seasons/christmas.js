@@ -164,15 +164,15 @@
     ['Gifts for the kitchen', 'giftable=1&category=home-and-kitchen&limit=4'],
   ];
   async function dressTheHomePage() {
-    if (location.pathname !== '/' || document.querySelector('.xmas-hero')) return;
-    const main = document.querySelector('main');
-    const hero = make('section', 'xmas-hero');
-    hero.setAttribute('aria-labelledby', 'xmas-hero-title');
-    const title = make('h2', '', 'Christmas gifts from independent makers');
-    title.id = 'xmas-hero-title';
-    const shop = make('a', 'button accent', 'Shop gifts');
+    const banner = document.querySelector('.home-banner');
+    if (location.pathname !== '/' || !banner || banner.classList.contains('is-christmas')) return;
+    // The banner (still the page's one H1 and one accent) speaks for Christmas and leads to the gift collection.
+    banner.classList.add('is-christmas');
+    document.getElementById('banner-title').textContent = 'Christmas gifts from independent makers';
+    document.getElementById('banner-line').textContent = 'Hand-made pickles, clay lamps and woven stoles, wrapped by the people who made them.';
+    const shop = document.getElementById('banner-button');
+    shop.textContent = 'Shop gifts';
     shop.href = '/christmas';
-    hero.append(title, make('p', '', 'Hand-made pickles, clay lamps and woven stoles, wrapped by the people who made them.'), shop);
     const rows = [];
     for (const [heading, query] of ROWS) {
       const data = await api('GET', '/api/products?' + query).catch(() => ({ products: [] }));
@@ -184,8 +184,8 @@
       section.append(grid);
       rows.push(section);
     }
-    const after = main.querySelector('.hero');
-    (after || main.firstElementChild).after(hero, ...rows);
+    const promos = document.querySelector('.promo-section');
+    (promos || banner).after(...rows);
   }
 
   document.addEventListener('DOMContentLoaded', () => {

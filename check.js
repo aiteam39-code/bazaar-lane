@@ -136,6 +136,86 @@ function newBrowser() {
   return browser;
 }
 
+// ---------- A real browser for the layout check (Google Chrome, headless, on its own empty profile) ----------
+
+const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
+// Opens each page in headless Chrome at width x height (as a phone) and measures it: how wide the page is, whether
+// the header is sticky, and on the home page how many tiles, promo cards and rows it drew and which buttons are small.
+async function measureInChrome(pages, width, height) {
+  if (!fs.existsSync(CHROME)) throw new Error('Google Chrome is needed for this check (set CHROME_PATH to it).');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bazaar-lane-chrome-'));
+  const debugPort = 9333;
+  const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
+    '--no-first-run', '--no-default-browser-check', `--window-size=${width},${height}`, 'about:blank'], { stdio: 'ignore' });
+  try {
+    let target = null;
+    for (let i = 0; i < 50 && !target; i += 1) {
+      await wait(200);
+      try {
+        target = (await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json()).find((t) => t.type === 'page');
+      } catch (e) {
+        // Chrome is still starting
+      }
+    }
+    if (!target) throw new Error('Chrome did not start.');
+    const socket = new WebSocket(target.webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+    let nextId = 0;
+    const waiting = new Map();
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.id && waiting.has(message.id)) {
+        waiting.get(message.id)(message);
+        waiting.delete(message.id);
+      }
+    };
+    const send = (method, params = {}) => new Promise((resolve) => {
+      nextId += 1;
+      waiting.set(nextId, resolve);
+      socket.send(JSON.stringify({ id: nextId, method, params }));
+    });
+    const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result.result.value;
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true });
+    const report = [];
+    for (const url of pages) {
+      await send('Page.navigate', { url: BASE + url });
+      await wait(1500);
+      // Scroll to the bottom twice so the lazy rows load, then measure.
+      await evaluate('new Promise((done) => { window.scrollTo(0, document.body.scrollHeight); setTimeout(() => { window.scrollTo(0, document.body.scrollHeight); setTimeout(done, 1200); }, 1200); })');
+      const measured = await evaluate(`(async () => {
+        const arrow = [...document.querySelectorAll('.row-arrow.is-next')].find((b) => !b.disabled && b.offsetParent !== null);
+        let arrowMoved = null;
+        if (arrow) {
+          const list = arrow.parentElement.querySelector('.product-row');
+          arrow.scrollIntoView({ block: 'center' });
+          const before = list.scrollLeft;
+          arrow.click();
+          await new Promise((done) => setTimeout(done, 1200));
+          arrowMoved = list.scrollLeft > before;
+        }
+        const header = document.querySelector('[data-customer-header]');
+        const small = [...document.querySelectorAll('main button, main a.button, header button, header .bag-link')]
+          .filter((el) => el.offsetParent !== null && !el.closest('.product-row .row-card:not(:first-child)'))
+          .map((el) => [el, el.getBoundingClientRect()]).filter(([, box]) => box.height > 0 && box.height < 43.5)
+          .map(([el, box]) => (el.textContent.trim() || el.getAttribute('aria-label') || el.className) + ' ' + Math.round(box.height) + 'px');
+        return { width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
+          sticky: header ? getComputedStyle(header).position : null,
+          tiles: document.querySelectorAll('.category-tile').length, promos: document.querySelectorAll('.promo-card').length,
+          rows: document.querySelectorAll('.category-row:not(.is-loading)').length, hiddenSections: document.querySelectorAll('.will-reveal:not(.is-in)').length,
+          arrowMoved, small };
+      })()`);
+      report.push(measured ? { url, ...measured } : { url, error: 'the page could not be measured' });
+    }
+    socket.close();
+    return report;
+  } finally {
+    chrome.kill();
+    await wait(300);
+    fs.rmSync(profile, { recursive: true, force: true });
+  }
+}
+
 // ---------- Helpers for the checks ----------
 
 // Runs one checklist item and prints PASS or FAIL.
@@ -297,16 +377,20 @@ function partsOfToken(token) {
 
 async function runChecks() {
   await checkPhone('9000000990'); // the test customer's phone, checked once for cash-on-delivery orders
-  await check('DATA', 'Sample data: 1 admin, 3 active shops with Chilli Lane Pantry, 1 pending, 4 categories with different rates, about 18 products, 2+ LOW, 1 switched off, 10% default, COD on', () => {
+  await check('DATA', 'Sample data: 1 admin, 3 active shops with Chilli Lane Pantry, 1 pending, the first 4 categories with different rates plus 17 more for the home page, 18 + 34 sample products, 2+ LOW, 1 switched off, 10% default, COD on', () => {
     expect(count("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'") === 1, 'there should be exactly 1 admin');
     const active = db.prepare("SELECT shop_name FROM sellers WHERE status = 'active'").all().map((row) => row.shop_name);
     expect(active.length === 3, `there should be 3 active shops, found ${active.length}`);
     expect(active.includes('Chilli Lane Pantry'), 'Chilli Lane Pantry should be one of the active shops');
     expect(count("SELECT COUNT(*) AS n FROM sellers WHERE status = 'pending'") === 1, 'there should be 1 pending shop');
-    const rates = db.prepare('SELECT commission_bps FROM categories').all().map((row) => row.commission_bps);
-    expect(rates.length === 4 && new Set(rates).size === 4, `there should be 4 categories with 4 different rates, found ${rates}`);
+    const firstFour = db.prepare("SELECT commission_bps FROM categories WHERE name IN ('Food and spices', 'Home and kitchen', 'Clothing', 'Gifts and crafts')").all().map((row) => row.commission_bps);
+    expect(firstFour.length === 4 && new Set(firstFour).size === 4, `the first 4 categories should have 4 different rates, found ${firstFour}`);
+    expect(count('SELECT COUNT(*) AS n FROM categories') === 21, `there should be 21 categories, found ${count('SELECT COUNT(*) AS n FROM categories')}`);
     const products = count('SELECT COUNT(*) AS n FROM products');
-    expect(products >= 15 && products <= 21, `there should be about 18 products, found ${products}`);
+    expect(products === 52, `there should be 18 + 34 = 52 sample products, found ${products}`);
+    const empty = db.prepare(`SELECT name FROM categories WHERE NOT EXISTS (SELECT 1 FROM products JOIN sellers ON sellers.id = products.seller_id
+      WHERE products.category_id = categories.id AND products.active = 1 AND products.stock > 0 AND sellers.status = 'active')`).all().map((r) => r.name);
+    expect(empty.length === 0, `no category may be empty, these are: ${empty.join(', ')}`);
     expect(count('SELECT COUNT(*) AS n FROM products WHERE stock <= low_stock_level AND deleted = 0') >= 2, 'at least 2 products should be LOW');
     expect(count('SELECT COUNT(*) AS n FROM products WHERE active = 0') >= 1, 'at least 1 product should be switched off');
     expect(count("SELECT COUNT(*) AS n FROM settings WHERE key = 'default_commission_bps' AND value = '1000'") === 1, 'the default commission should be 10% (1000)');
@@ -647,7 +731,7 @@ async function runChecks() {
 
   await check('C1', 'The home page lists only active shops and the categories; search finds a product by part of its name, in any letter case, and only shows products that can be bought', async () => {
     const categories = (await newBrowser().call('GET', '/api/categories')).data.categories;
-    expect(categories.length === 4 && categories.every((c) => Number.isInteger(c.product_count)), 'the 4 categories should be listed, each with a count');
+    expect(categories.length === 21 && categories.every((c) => Number.isInteger(c.product_count)), 'the 21 categories should be listed, each with a count');
     const shops = await homePageShops();
     expect(shops.includes('Chilli Lane Pantry') && !shops.includes('Brass Bell Crafts') && !shops.includes('ZZ Test Shop Two'), 'only active shops should be listed');
     const chilli = await searchNames({ search: 'CHILLI' });
@@ -665,7 +749,8 @@ async function runChecks() {
 
   await check('C2', '/store/<slug> shows only that shop\'s products customers may see (sold out marked; no switched-off, deleted or hidden ones; no stock numbers or phones); a pending, rejected or unknown shop says "This shop is not available"', async () => {
     const handloom = await storeProducts('handloom-nook');
-    expect(handloom.length === 5 && handloom.every((p) => p.shop_slug === 'handloom-nook'), `Handloom Nook should show its 5 products customers may see, found ${handloom.length}`);
+    const handloomVisible = count("SELECT COUNT(*) AS n FROM products JOIN sellers ON sellers.id = products.seller_id WHERE sellers.slug = 'handloom-nook' AND products.active = 1 AND products.deleted = 0 AND products.hidden = 0");
+    expect(handloom.length === handloomVisible && handloomVisible === 15 && handloom.every((p) => p.shop_slug === 'handloom-nook'), `Handloom Nook should show its 15 products customers may see, found ${handloom.length}`);
     expect(!handloom.some((p) => p.name === 'Woollen Shawl'), 'the switched-off Woollen Shawl should not show');
     const pantry = await storeProducts('chilli-lane-pantry');
     expect(pantry.find((p) => p.name === 'Chilli Pickle Gift Box').sold_out === true, 'the Gift Box (0 stock) should be marked Sold out');
@@ -684,7 +769,8 @@ async function runChecks() {
     const names = towels.data.products.map((p) => p.name);
     expect(names.includes('Handloom Bath Towel') && names.every((name) => /towel/i.test(name)), `the admin search should find the towels, got ${names}`);
     const byShop = await state.admin.call('GET', '/api/admin/products?search=terracotta');
-    expect(byShop.data.products.length === 6, `the admin search should also find products by shop name, got ${byShop.data.products.length}`);
+    const terracottaCount = count("SELECT COUNT(*) AS n FROM products JOIN sellers ON sellers.id = products.seller_id WHERE sellers.shop_name = 'Terracotta Corner' AND products.deleted = 0");
+    expect(byShop.data.products.length === terracottaCount && terracottaCount === 18, `the admin search should also find products by shop name (all ${terracottaCount}), got ${byShop.data.products.length}`);
 
     const towel = productRow('Handloom Bath Towel');
     const noReason = await state.admin.call('POST', `/api/admin/products/${towel.id}/hide`, { reason: '  ' });
@@ -1818,6 +1904,104 @@ async function runChecks() {
   const moveClock = async (iso) => { await stopServer(); await startServer(iso); };
   const seasonOf = async (browser = newBrowser(), query = '') => (await browser.call('GET', '/api/season' + query)).data.season;
   const homeHtml = async (browser = newBrowser(), query = '') => String((await browser.call('GET', '/' + query)).data);
+
+  // ---------- The home page (laid out like a quick-shopping app) ----------
+
+  await check('H1', 'Every category tile on the home page opens a category page that has products to buy', async () => {
+    const home = (await newBrowser().call('GET', '/api/home')).data;
+    const withProducts = db.prepare(`SELECT COUNT(DISTINCT products.category_id) AS n FROM products JOIN sellers ON sellers.id = products.seller_id
+      WHERE products.active = 1 AND products.deleted = 0 AND products.hidden = 0 AND products.stock > 0 AND sellers.status = 'active'`).get().n;
+    expect(home.categories.length >= 20 && home.categories.length === withProducts, `the home page shows ${home.categories.length} tiles for ${withProducts} categories with products`);
+    for (const tile of home.categories) {
+      const page = await newBrowser().call('GET', '/category/' + tile.slug);
+      expect(page.status === 200 && String(page.data).includes(tile.name), `the tile ${tile.name} opens /category/${tile.slug} (${page.status})`);
+      const list = (await newBrowser().call('GET', '/api/products?category=' + tile.slug)).data;
+      expect(list.products.length > 0 && list.products.length <= tile.product_count, `${tile.name} has products to buy`);
+      expect(tile.name.length > 0 && (tile.photo_url === null || tile.photo_url.startsWith('/uploads/')), `${tile.name} has a picture of this site`);
+    }
+    const rows = (await newBrowser().call('GET', '/api/home/rows?offset=0&limit=6')).data;
+    expect(rows.rows.length === 6 && rows.done === false && rows.next_offset === 6, 'the home page loads 6 category rows first, then more');
+  });
+
+  await check('H2', 'The promo cards link to real pages of this store, and the admin can switch one off (and change it) while sellers and visitors cannot', async () => {
+    const cards = (await state.admin.call('GET', '/api/admin/promo-cards')).data.cards;
+    expect(cards.length >= 6, `${cards.length} promo cards`);
+    for (const card of cards.filter((c) => c.enabled)) {
+      const page = await newBrowser().call('GET', card.link);
+      expect(page.status === 200, `the card "${card.title}" opens ${card.link} (${page.status})`);
+    }
+    const first = cards[0];
+    const off = await state.admin.call('PUT', `/api/admin/promo-cards/${first.id}`, { enabled: false });
+    expect(off.status === 200, 'the admin switches a card off: ' + show(off));
+    let home = (await newBrowser().call('GET', '/api/home')).data;
+    expect(!home.promo_cards.some((c) => c.id === first.id), 'a switched-off card is not on the home page');
+    const bad = await state.admin.call('PUT', `/api/admin/promo-cards/${first.id}`, { link: 'https://example.com/' });
+    expect(bad.status === 400, 'a link to another website is refused');
+    const noCategory = await state.admin.call('PUT', `/api/admin/promo-cards/${first.id}`, { link: '/category/zz-no-such-thing' });
+    expect(noCategory.status === 400, 'a link to a category that does not exist is refused');
+    const seller = await loginAs(demo('Chilli Lane Pantry').email, demo('Chilli Lane Pantry').password);
+    expect((await seller.call('PUT', `/api/admin/promo-cards/${first.id}`, { enabled: true })).status === 403, 'a seller gets 403');
+    expect((await newBrowser().call('GET', '/api/admin/promo-cards')).status === 401, 'a visitor gets 401');
+    const on = await state.admin.call('PUT', `/api/admin/promo-cards/${first.id}`, { enabled: true, title: first.title, line: first.line, link: first.link, tone: first.tone });
+    expect(on.status === 200, 'the card is put back');
+    home = (await newBrowser().call('GET', '/api/home')).data;
+    expect(home.promo_cards.some((c) => c.id === first.id && c.title === first.title), 'switched on again, it is back on the home page');
+  });
+
+  await check('H3', "Every product's delivery chip on the home page matches its shop's real dispatch days (+ 2 to + 5), and follows a change", async () => {
+    const dispatch = new Map(db.prepare('SELECT shop_name, dispatch_days FROM sellers').all().map((s) => [s.shop_name, s.dispatch_days]));
+    const rows = (await newBrowser().call('GET', '/api/home/rows?offset=0&limit=12')).data.rows;
+    let seen = 0;
+    for (const row of rows) {
+      for (const product of row.products) {
+        const days = dispatch.get(product.shop_name);
+        expect(product.delivery.from_days === days + 2 && product.delivery.to_days === days + 5, `${product.name}: chip ${product.delivery.from_days}-${product.delivery.to_days}, shop dispatches in ${days}`);
+        seen += 1;
+      }
+    }
+    expect(seen > 20, `${seen} products checked`);
+    const shopId = db.prepare("SELECT id, dispatch_days FROM sellers WHERE shop_name = 'Chilli Lane Pantry'").get();
+    db.prepare('UPDATE sellers SET dispatch_days = 6 WHERE id = ?').run(shopId.id);
+    try {
+      const again = (await newBrowser().call('GET', '/api/home/rows?offset=0&limit=12')).data.rows.flatMap((r) => r.products)
+        .filter((p) => p.shop_name === 'Chilli Lane Pantry');
+      expect(again.length > 0 && again.every((p) => p.delivery.from_days === 8 && p.delivery.to_days === 11), 'after the shop changes to 6 dispatch days its chips say 8-11 days');
+      const header = (await newBrowser().call('GET', '/api/header')).data;
+      expect(header.delivery.to_days === 11, 'the header\'s delivery line follows the slowest shop');
+    } finally {
+      db.prepare('UPDATE sellers SET dispatch_days = ? WHERE id = ?').run(shopId.dispatch_days, shopId.id);
+    }
+  });
+
+  await check('H4', 'At 390 pixels wide (a phone) the home page and the other customer pages never scroll sideways, the header stays on top, and buttons are at least 44 pixels (measured in a real browser)', async () => {
+    const pages = ['/', '/search?search=pickle', '/category/pantry-and-spices', '/store/chilli-lane-pantry', '/cart.html', '/checkout.html'];
+    const report = await measureInChrome(pages, 390, 844);
+    for (const page of report) {
+      expect(page.error === undefined, `${page.url}: ${page.error}`);
+      expect(page.scrollWidth <= page.width, `${page.url} is ${page.scrollWidth}px wide at ${page.width}px: it scrolls sideways`);
+    }
+    const home = report[0];
+    expect(home.sticky === 'sticky', 'the home page header is sticky');
+    expect(home.rows >= 6 && home.tiles >= 20 && home.promos >= 6, `the home page drew ${home.tiles} tiles, ${home.promos} promo cards and ${home.rows} rows`);
+    expect(home.small.length === 0, 'these home page buttons are under 44px: ' + home.small.join(', '));
+    expect(home.rows === home.tiles, `scrolling down loads every category row (${home.rows} of ${home.tiles})`);
+    // On a laptop: every row loads too, nothing is left faded out, and the round arrows move a row that is too long.
+    const zz = db.prepare("SELECT id FROM sellers WHERE shop_name = 'Terracotta Corner'").get().id;
+    const kitchen = db.prepare("SELECT id FROM categories WHERE name = 'Home and kitchen'").get().id;
+    const added = [];
+    for (const name of ['ZZ Row Cup', 'ZZ Row Plate', 'ZZ Row Jug']) {
+      added.push(db.prepare(`INSERT INTO products (seller_id, category_id, name, description, price, stock, low_stock_level, active, deleted, hidden, created_at, size_label)
+        VALUES (?, ?, ?, '', 19900, 5, 1, 1, 0, 0, ?, '1 piece')`).run(zz, kitchen, name, new Date().toISOString()).lastInsertRowid);
+    }
+    try {
+      const [laptop] = await measureInChrome(['/'], 1280, 860);
+      expect(laptop.scrollWidth <= laptop.width && laptop.rows === laptop.tiles, `at 1280px: ${laptop.rows} of ${laptop.tiles} rows, ${laptop.scrollWidth}px wide`);
+      expect(laptop.hiddenSections === 0, `${laptop.hiddenSections} sections stayed faded out`);
+      expect(laptop.arrowMoved === true, 'the round arrow moves a long row on a laptop');
+    } finally {
+      for (const id of added) db.prepare('DELETE FROM products WHERE id = ?').run(id); // only the ZZ rows this check added, in its own test database
+    }
+  });
 
   await check('X1', 'The season is on inside its dates (1 to 26 December, until 23:59) and off outside them, by itself, with no deploy', async () => {
     const moments = [[`${year}-11-30T23:59:00`, null], [`${year}-12-01T00:00:30`, 'christmas'], [`${year}-12-10T12:00:00`, 'christmas'],

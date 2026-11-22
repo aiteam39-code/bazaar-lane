@@ -53,6 +53,7 @@ app.use(require('./routes/auth'));
 app.use(require('./routes/sellers'));
 app.use(require('./routes/products'));
 app.use(require('./routes/storefront'));
+app.use(require('./routes/home'));
 app.use(require('./routes/checkout'));
 app.use(require('./routes/fulfilment'));
 app.use(require('./routes/payments'));
@@ -68,11 +69,11 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: 'That address does not exist.' });
 });
 
-// Pages, styles and scripts live in the public folder. Styles and scripts may be kept by the browser for an hour
-// (pages are always asked for again, so a change shows up within the hour at the latest).
+// Pages, styles and scripts live in the public folder. The browser may keep styles and scripts, but asks each time
+// whether they changed (a quick "not changed" answer), so an update shows at once.
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, file) => {
-    if (/\.(css|js)$/.test(file)) res.set('Cache-Control', 'public, max-age=3600');
+    if (/\.(css|js)$/.test(file)) res.set('Cache-Control', 'no-cache'); // kept, but checked each time, so an update shows at once
   },
 }));
 

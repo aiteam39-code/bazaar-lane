@@ -1,11 +1,9 @@
 // routes/products.js - products and stock.
 // Seller: only their OWN products (add, edit, + and - stock, switch off and on, delete). Anything else gets 403.
 // Admin: every product, with a search, and Hide / Unhide for products that break the rules. The admin cannot change prices.
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const express = require('express');
-const { db, nowIso, UPLOADS_DIR, photoUrl } = require('../db');
+const { db, nowIso, photoUrl } = require('../db');
+const { readPhotoBody, savePhoto, removeOldPhoto } = require('../photos');
 const auth = require('../auth');
 const { paiseFromRupeesText } = require('../money');
 
@@ -15,11 +13,10 @@ const { HttpError } = auth;
 const MAX_PRICE = 1000000 * 100; // Rs 10,00,000 in paise
 const MAX_STOCK = 1000000;       // the most one product can have in stock
 const MAX_STOCK_CHANGE = 100000; // the most one + or - can add or take away
-const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // a product photo is at most 2 MB
 
 // The product fields the seller and the admin see.
 const PRODUCT_FIELDS = `
-  products.id, products.seller_id, products.name, products.description, products.photo, products.price, products.giftable,
+  products.id, products.seller_id, products.name, products.description, products.photo, products.price, products.giftable, products.size_label,
   products.stock, products.low_stock_level, products.active, products.hidden, products.hidden_reason,
   products.category_id, categories.name AS category_name`;
 
@@ -47,9 +44,9 @@ router.post('/api/seller/products', auth.requireSeller('active'), (req, res) => 
   const form = readProductForm(body);
   const stock = auth.readWholeNumber(body.stock, 'Stock', 0, MAX_STOCK);
   const result = db.prepare(`
-    INSERT INTO products (seller_id, category_id, name, description, price, giftable, stock, low_stock_level, active, deleted, hidden, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)`)
-    .run(req.shop.id, form.categoryId, form.name, form.description, form.price, form.giftable, stock, form.lowStockLevel, nowIso());
+    INSERT INTO products (seller_id, category_id, name, description, price, giftable, size_label, stock, low_stock_level, active, deleted, hidden, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?)`)
+    .run(req.shop.id, form.categoryId, form.name, form.description, form.price, form.giftable, form.sizeLabel, stock, form.lowStockLevel, nowIso());
   res.status(201).json({ ok: true, id: result.lastInsertRowid, message: `${form.name} was added.` });
 });
 
@@ -58,9 +55,9 @@ router.put('/api/seller/products/:id', auth.requireSeller('active'), (req, res) 
   const product = findOwnProduct(req, req.params.id);
   const form = readProductForm(req.body || {});
   db.prepare(`
-    UPDATE products SET name = ?, category_id = ?, price = ?, description = ?, giftable = ?, low_stock_level = ?
+    UPDATE products SET name = ?, category_id = ?, price = ?, description = ?, giftable = ?, size_label = ?, low_stock_level = ?
     WHERE id = ? AND seller_id = ?`)
-    .run(form.name, form.categoryId, form.price, form.description, form.giftable, form.lowStockLevel, product.id, req.shop.id);
+    .run(form.name, form.categoryId, form.price, form.description, form.giftable, form.sizeLabel, form.lowStockLevel, product.id, req.shop.id);
   res.json({ ok: true, message: `${form.name} was saved.` });
 });
 
@@ -110,23 +107,15 @@ router.post('/api/seller/products/:id/switch-on', auth.requireSeller('active'), 
   res.json({ ok: true, message: `${product.name} is on sale again.` });
 });
 
-// Upload a product photo: the file itself is the request body (JPEG, PNG or WebP, at most 2 MB).
-// The server checks the type by the file's first bytes, never by its name or the type the browser says,
-// and saves it in the uploads folder under a new random name. A new photo replaces the old one.
-router.post('/api/seller/products/:id/photo', auth.requireSeller('active'),
-  express.raw({ type: () => true, limit: MAX_PHOTO_BYTES }), (req, res) => {
-    const product = findOwnProduct(req, req.params.id);
-    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-    if (bytes.length === 0) throw new HttpError(400, 'Please choose a photo to upload.');
-    const extension = photoExtension(bytes);
-    if (!extension) throw new HttpError(400, 'The photo must be a JPEG, PNG or WebP picture.');
-    const fileName = crypto.randomBytes(16).toString('hex') + extension;
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-    fs.writeFileSync(path.join(UPLOADS_DIR, fileName), bytes, { flag: 'wx' }); // wx: never overwrites a file
-    db.prepare('UPDATE products SET photo = ? WHERE id = ? AND seller_id = ?').run(fileName, product.id, req.shop.id);
-    removeOldPhoto(product.photo);
-    res.json({ ok: true, photo_url: photoUrl(fileName), message: `The photo of ${product.name} was saved.` });
-  });
+// Upload a product photo (photos.js: JPEG, PNG or WebP by the first bytes, at most 2 MB, a new random name). A new
+// photo replaces the old one.
+router.post('/api/seller/products/:id/photo', auth.requireSeller('active'), readPhotoBody, (req, res) => {
+  const product = findOwnProduct(req, req.params.id);
+  const fileName = savePhoto(req.body);
+  db.prepare('UPDATE products SET photo = ? WHERE id = ? AND seller_id = ?').run(fileName, product.id, req.shop.id);
+  removeOldPhoto(product.photo);
+  res.json({ ok: true, photo_url: photoUrl(fileName), message: `The photo of ${product.name} was saved.` });
+});
 
 // Delete: the product disappears for good, but it is never erased, so old orders keep its name.
 router.delete('/api/seller/products/:id', auth.requireSeller('active'), (req, res) => {
@@ -190,7 +179,9 @@ function readProductForm(body) {
   if (description.length > 500) throw new HttpError(400, 'Description must be 500 characters or fewer.');
   const lowStockLevel = auth.readWholeNumber(body.low_stock_level, 'Low-stock level', 0, MAX_STOCK);
   const giftable = body.giftable === true || body.giftable === 1 || body.giftable === '1' ? 1 : 0; // "Giftable" tick box
-  return { name, categoryId, price, description, giftable, lowStockLevel };
+  const sizeLabel = auth.cleanText(body.size_label).replace(/\s+/g, ' '); // "250 g", "Set of 4" (optional)
+  if (sizeLabel.length > 30) throw new HttpError(400, 'Size or weight must be 30 characters or fewer, like 250 g or Set of 4.');
+  return { name, categoryId, price, description, giftable, sizeLabel, lowStockLevel };
 }
 
 // The category chosen in the form. 400 if it is missing or not a real category.
@@ -199,21 +190,6 @@ function readCategoryId(value) {
   const category = id ? db.prepare('SELECT id FROM categories WHERE id = ?').get(id) : null;
   if (!category) throw new HttpError(400, 'Please choose a category from the list.');
   return category.id;
-}
-
-// The file type from the first bytes of the file: '.jpg', '.png' or '.webp', or null for anything else.
-function photoExtension(bytes) {
-  const starts = (hex, at = 0) => bytes.subarray(at, at + hex.length / 2).toString('hex') === hex;
-  if (bytes.length >= 3 && starts('ffd8ff')) return '.jpg';
-  if (bytes.length >= 8 && starts('89504e470d0a1a0a')) return '.png';
-  if (bytes.length >= 12 && starts('52494646') && starts('57454250', 8)) return '.webp'; // "RIFF" .... "WEBP"
-  return null;
-}
-
-// Deletes a photo file this app saved earlier (only names it made itself, so nothing else can ever be deleted).
-function removeOldPhoto(fileName) {
-  if (!fileName || !/^[a-f0-9]{32}\.(jpg|png|webp)$/.test(fileName)) return;
-  fs.rmSync(path.join(UPLOADS_DIR, fileName), { force: true }); // done before the answer, so the old file is surely gone
 }
 
 // Finds a product by the id in the address (digits only), or answers 404.

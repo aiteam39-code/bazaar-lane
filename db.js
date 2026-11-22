@@ -260,6 +260,18 @@ function createTables() {
       enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
     );
 
+    -- The home page's promo cards (the admin switches each on or off and changes its words, photo and link).
+    CREATE TABLE IF NOT EXISTS promo_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      position INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL,
+      line TEXT NOT NULL DEFAULT '',
+      link TEXT NOT NULL,
+      tone TEXT NOT NULL DEFAULT 'sunk' CHECK (tone IN ('accent', 'success', 'sunk', 'danger')),
+      photo TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))
+    );
+
     -- A delivered seller order is booked in the ledger only once.
     CREATE UNIQUE INDEX IF NOT EXISTS ledger_one_booking_per_order ON ledger(seller_order_id, type) WHERE seller_order_id IS NOT NULL;
 
@@ -306,6 +318,14 @@ function addMissingColumns() {
       if (table === 'sellers' && name === 'gift_wrap_price') addSampleGiftWrap();
     }
   }
+  // The home page rebuild: a size or weight for each product ("250 g", "Set of 4"), and a photo for category tiles.
+  const productHas = db.prepare('PRAGMA table_info(products)').all().map((column) => column.name);
+  if (!productHas.includes('size_label')) {
+    db.exec("ALTER TABLE products ADD COLUMN size_label TEXT NOT NULL DEFAULT ''");
+    addSampleSizes();
+  }
+  const categoryHas = db.prepare('PRAGMA table_info(categories)').all().map((column) => column.name);
+  if (!categoryHas.includes('photo')) db.exec('ALTER TABLE categories ADD COLUMN photo TEXT');
   // Sector 4: the provider's id of the payment itself (Razorpay refunds need it).
   const paymentColumns = db.prepare('PRAGMA table_info(payments)').all().map((column) => column.name);
   if (!paymentColumns.includes('paid_ref')) db.exec('ALTER TABLE payments ADD COLUMN paid_ref TEXT');
@@ -338,6 +358,104 @@ function tagSampleGifts() {
 function addSampleGiftWrap() {
   const set = db.prepare('UPDATE sellers SET gift_wrap_price = ? WHERE shop_name = ?');
   for (const [shop, paise] of Object.entries(SAMPLE_GIFT_WRAP)) set.run(paise, shop);
+}
+
+// The sizes of the 18 first sample products (filled in once, when the size column is added).
+const SAMPLE_SIZES = {
+  'Green Chilli Pickle': '300 g', 'Red Chilli Garlic Chutney': '200 g', 'Hot Chilli Sauce': '250 ml', 'Smoky Chilli Oil': '200 ml',
+  'Chilli Masala Spice Mix': '100 g', 'Chilli Pickle Gift Box': 'Set of 3', 'Clay Water Bottle': '1 litre', 'Terracotta Cooking Pot': '2 litres',
+  'Clay Tea Cups (set of 4)': 'Set of 4', 'Hanging Clay Lamp': '1 piece', 'Clay Planter': '15 cm', 'Clay Diya Set (12)': 'Set of 12',
+  'Cotton Stole': '2 m', 'Handloom Bath Towel': '140 x 70 cm', 'Cotton Tote Bag': '1 bag', 'Hand-woven Scarf': '1.8 m',
+  'Cotton Kitchen Towels (set of 3)': 'Set of 3', 'Woollen Shawl': '2 m',
+};
+function addSampleSizes() {
+  const set = db.prepare("UPDATE products SET size_label = ? WHERE name = ? AND size_label = ''");
+  for (const [name, size] of Object.entries(SAMPLE_SIZES)) set.run(size, name);
+}
+
+// More categories for the home page's category grid, each with its rate, and sample products from the sample shops so
+// none is empty. Added once: a category that already exists is left alone (and so are its products).
+const MORE_CATEGORIES = [
+  ['Pantry and spices', 800], ['Snacks and sweets', 800], ['Tea and coffee', 800], ['Fresh and organic', 800],
+  ['Breakfast and spreads', 800], ['Home decor', 1000], ['Bags and accessories', 1200], ['Jewellery', 1500],
+  ['Beauty and personal care', 1200], ['Health and wellness', 1000], ['Baby care', 1000], ['Pet care', 1000],
+  ['Stationery and prints', 1200], ['Toys and games', 1200], ['Cleaning essentials', 1000], ['Plants and garden', 1000],
+  ['Festive and puja', 1500],
+];
+// [shop, category, name, price in rupees, stock, low-stock level, size, description, giftable]
+const MORE_PRODUCTS = [
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Whole Cumin Seeds', 140, 30, 6, '200 g', 'Bold, sun-dried cumin seeds for tempering.', 0],
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Turmeric Powder', 120, 35, 6, '250 g', 'Bright, earthy turmeric, stone-ground in small batches.', 0],
+  ['Chilli Lane Pantry', 'Snacks and sweets', 'Spicy Banana Chips', 110, 40, 8, '200 g', 'Thin banana chips with a little chilli and salt.', 0],
+  ['Chilli Lane Pantry', 'Snacks and sweets', 'Jaggery Peanut Chikki', 130, 30, 6, '250 g', 'Crunchy peanut brittle made with jaggery.', 1],
+  ['Chilli Lane Pantry', 'Tea and coffee', 'Masala Chai Blend', 210, 25, 5, '250 g', 'Assam tea with ginger, cardamom and a pinch of pepper.', 1],
+  ['Chilli Lane Pantry', 'Tea and coffee', 'Filter Coffee Powder', 260, 20, 5, '250 g', 'A medium roast with chicory, for a strong filter coffee.', 0],
+  ['Chilli Lane Pantry', 'Fresh and organic', 'Organic Jaggery Block', 150, 25, 5, '500 g', 'Unrefined jaggery from organic sugarcane.', 0],
+  ['Chilli Lane Pantry', 'Fresh and organic', 'Organic Red Chilli Flakes', 160, 25, 5, '100 g', 'Sun-dried organic red chillies, roughly crushed.', 0],
+  ['Chilli Lane Pantry', 'Breakfast and spreads', 'Mango Chilli Jam', 230, 20, 4, '250 g', 'Sweet mango jam with a gentle chilli warmth.', 1],
+  ['Chilli Lane Pantry', 'Breakfast and spreads', 'Roasted Peanut Butter', 240, 20, 4, '300 g', 'Just roasted peanuts and a little salt.', 0],
+  ['Chilli Lane Pantry', 'Health and wellness', 'Tulsi Ginger Tea', 180, 25, 5, '100 g', 'Holy basil and dried ginger, caffeine-free.', 0],
+  ['Chilli Lane Pantry', 'Health and wellness', 'Turmeric Honey', 260, 18, 4, '250 g', 'Raw honey stirred with turmeric and black pepper.', 1],
+  ['Terracotta Corner', 'Home decor', 'Terracotta Wall Plate', 480, 10, 2, '25 cm', 'A hand-painted clay plate to hang on the wall.', 1],
+  ['Terracotta Corner', 'Home decor', 'Clay Bud Vase', 260, 15, 3, '12 cm', 'A small vase for a single flower.', 1],
+  ['Terracotta Corner', 'Jewellery', 'Terracotta Bead Necklace', 390, 12, 3, '45 cm', 'Hand-rolled clay beads, painted and fired.', 1],
+  ['Terracotta Corner', 'Jewellery', 'Clay Stud Earrings', 220, 20, 4, '1 pair', 'Light clay studs with a matt glaze.', 1],
+  ['Terracotta Corner', 'Pet care', 'Clay Pet Water Bowl', 340, 15, 3, '18 cm', 'A heavy clay bowl that keeps water cool.', 0],
+  ['Terracotta Corner', 'Toys and games', 'Clay Spinning Tops', 180, 20, 4, 'Set of 3', 'Painted clay tops, the old-fashioned way.', 1],
+  ['Terracotta Corner', 'Toys and games', 'Terracotta Whistle Bird', 150, 20, 4, '1 piece', 'A little clay bird that whistles when you blow.', 1],
+  ['Terracotta Corner', 'Cleaning essentials', 'Coconut Fibre Scrubbers', 120, 30, 6, 'Set of 3', 'Tough scrubbers for clay and iron pots.', 0],
+  ['Terracotta Corner', 'Plants and garden', 'Small Clay Herb Pots', 280, 15, 3, 'Set of 2', 'Two small pots with saucers, for a kitchen window.', 1],
+  ['Terracotta Corner', 'Plants and garden', 'Clay Bird Feeder', 330, 10, 2, '1 piece', 'A hanging clay feeder for seeds and water.', 0],
+  ['Terracotta Corner', 'Festive and puja', 'Painted Rangoli Diyas', 200, 25, 5, 'Set of 4', 'Bright, hand-painted clay lamps for festivals.', 1],
+  ['Terracotta Corner', 'Festive and puja', 'Clay Puja Thali', 450, 10, 2, '25 cm', 'A clay plate with small bowls for offerings.', 1],
+  ['Handloom Nook', 'Bags and accessories', 'Handloom Sling Bag', 520, 12, 3, '1 bag', 'A woven sling bag with a long strap.', 1],
+  ['Handloom Nook', 'Bags and accessories', 'Cotton Coin Pouches', 180, 25, 5, 'Set of 3', 'Small zip pouches in block-printed cotton.', 1],
+  ['Handloom Nook', 'Beauty and personal care', 'Cotton Face Towels', 240, 25, 5, 'Set of 4', 'Soft, small towels for the face.', 0],
+  ['Handloom Nook', 'Beauty and personal care', 'Handloom Hair Wrap', 210, 20, 4, '1 piece', 'A light cotton wrap for drying hair.', 0],
+  ['Handloom Nook', 'Baby care', 'Soft Cotton Baby Swaddle', 390, 15, 3, '100 x 100 cm', 'A breathable muslin swaddle for babies.', 1],
+  ['Handloom Nook', 'Baby care', 'Muslin Baby Bibs', 260, 20, 4, 'Set of 3', 'Soft, washable bibs.', 1],
+  ['Handloom Nook', 'Pet care', 'Cotton Pet Bed Cover', 450, 10, 2, '60 x 80 cm', 'A washable cover for a medium pet bed.', 0],
+  ['Handloom Nook', 'Stationery and prints', 'Block-printed Notebook', 230, 20, 4, 'A5, 120 pages', 'A cotton-covered notebook with plain pages.', 1],
+  ['Handloom Nook', 'Stationery and prints', 'Handmade Paper Cards', 190, 25, 5, 'Set of 6', 'Cards and envelopes made from cotton rag paper.', 1],
+  ['Handloom Nook', 'Cleaning essentials', 'Cotton Cleaning Cloths', 160, 30, 6, 'Set of 6', 'Thick cloths that wash well again and again.', 0],
+];
+function addMoreCategories() {
+  const added = [];
+  for (const [name, rate] of MORE_CATEGORIES) {
+    if (db.prepare('SELECT 1 FROM categories WHERE name = ?').get(name)) continue;
+    db.prepare('INSERT INTO categories (name, commission_bps) VALUES (?, ?)').run(name, rate);
+    added.push(name);
+  }
+  return added;
+}
+// Adds the sample products of these categories (only for sample shops that exist, and never a product twice).
+function addMoreSampleProducts(categoryNames) {
+  const insert = db.prepare(`
+    INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted,
+                          created_at, giftable, size_label)
+    VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 0, ?, ?, ?)`);
+  for (const [shop, category, name, price, stock, low, size, description, giftable] of MORE_PRODUCTS) {
+    if (!categoryNames.includes(category)) continue;
+    const seller = db.prepare('SELECT id FROM sellers WHERE shop_name = ?').get(shop);
+    const categoryRow = db.prepare('SELECT id FROM categories WHERE name = ?').get(category);
+    if (!seller || !categoryRow || db.prepare('SELECT 1 FROM products WHERE name = ? AND seller_id = ?').get(name, seller.id)) continue;
+    insert.run(seller.id, categoryRow.id, name, description, rupees(price), stock, low, nowIso(), giftable, size);
+  }
+}
+
+// The home page's promo cards, added once (when there are none): each links to a real category or collection page.
+const SAMPLE_PROMO_CARDS = [
+  ['Pantry staples at your doorstep', 'Spices, pickles and oils from small kitchens', '/category/pantry-and-spices', 'accent'],
+  ['Home and kitchen, handmade', 'Pots, mugs and planters from family potteries', '/category/home-and-kitchen', 'success'],
+  ['Gifts for every occasion', 'Things makers marked as giftable', '/search?giftable=1', 'danger'],
+  ['Pet care supplies at your door', 'Cool clay bowls and washable bed covers', '/category/pet-care', 'sunk'],
+  ['No time to shop for the baby?', 'Baby essentials, delivered', '/category/baby-care', 'success'],
+  ['Get prints and stationery delivered', 'Notebooks and cards on handmade paper', '/category/stationery-and-prints', 'accent'],
+];
+function addSamplePromoCards() {
+  if (db.prepare('SELECT COUNT(*) AS n FROM promo_cards').get().n > 0) return;
+  const insert = db.prepare('INSERT INTO promo_cards (position, title, line, link, tone, enabled) VALUES (?, ?, ?, ?, ?, 1)');
+  SAMPLE_PROMO_CARDS.forEach(([title, line, link, tone], index) => insert.run(index + 1, title, line, link, tone));
 }
 
 // The seasons, added once when missing: Christmas, 1 to 26 December (until 23:59) of this year.
@@ -375,6 +493,8 @@ createTables();
 addMissingColumns();
 addDefaultSettings();
 addDefaultSeasons();
+addMoreSampleProducts(addMoreCategories());
+addSamplePromoCards();
 addSampleShopDetails();
 
 // ---------- Sample data (only for a brand-new, empty database) ----------
@@ -470,6 +590,8 @@ function fillSampleDataIfEmpty() {
   addSampleShopDetails();
   tagSampleGifts();
   addSampleGiftWrap();
+  addSampleSizes();
+  addMoreSampleProducts(MORE_CATEGORIES.map(([name]) => name));
   db.exec("UPDATE sellers SET approved_at = created_at WHERE approved_at IS NULL AND status = 'active'");
   return true;
 }

@@ -11,38 +11,40 @@
 <body>
   <header class="site-header" data-customer-header></header>
 
-  <main class="shop-main">
-    <section class="hero">
-      <h1>Hand-made goods from independent shops across India</h1>
-      <p class="muted">Pickles, clay pots, hand-woven cloth and gifts. One bag, many shops, one payment.</p>
+  <main class="shop-main home-main">
+    <section class="home-banner hero" aria-labelledby="banner-title">
+      <div class="banner-words">
+        <h1 id="banner-title">Handmade by independent makers, delivered to your door</h1>
+        <p id="banner-line">Pickles, clay pots, hand-woven cloth and gifts from small shops across India. One bag, many shops, one payment.</p>
+        <a id="banner-button" class="button accent" href="#categories-title">Shop now</a>
+      </div>
+      <div class="banner-pictures" id="banner-pictures" aria-hidden="true"></div>
     </section>
 
     <div id="message" class="message" role="alert"></div>
 
-    <section aria-labelledby="categories-title">
+    <section class="promo-section" aria-label="Offers and collections">
+      <ul id="promo-cards" class="promo-row"></ul>
+    </section>
+
+    <section class="reveal" aria-labelledby="categories-title">
       <h2 id="categories-title">Shop by category</h2>
-      <div id="collections" class="collections"></div>
+      <ul id="category-tiles" class="tile-grid"></ul>
     </section>
 
-    <section aria-labelledby="new-title">
-      <div class="section-head">
-        <h2 id="new-title">New from makers</h2>
-        <a href="/search?sort=newest">See everything</a>
-      </div>
-      <div id="new-products" class="product-grid"></div>
-      <p id="no-products" class="muted hidden">No products yet. Please come back soon.</p>
-    </section>
+    <div id="category-rows" class="category-rows"></div>
+    <div id="rows-more" class="rows-more" aria-live="polite"></div>
 
-    <section aria-labelledby="shops-title">
+    <section class="reveal" aria-labelledby="shops-title">
       <h2 id="shops-title">The shops</h2>
       <div id="shops" class="grid three"></div>
       <p id="no-shops" class="muted hidden">No shops are open yet. Please come back soon.</p>
     </section>
 
-    <section class="sell-band" aria-labelledby="sell-title">
+    <section class="sell-band reveal" aria-labelledby="sell-title">
       <h2 id="sell-title">Make things by hand? Sell them here.</h2>
       <p>Open your own shop in a few minutes. We only earn when you sell.</p>
-      <a class="button accent" href="/sell">Start selling</a>
+      <a class="button secondary" href="/sell">Start selling</a>
     </section>
   </main>
 

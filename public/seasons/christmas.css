@@ -75,7 +75,7 @@ html[data-season="christmas"] {
 }
 
 /* ---------- The header: snow on the top edge, lights along the bottom, a sprig beside the name ---------- */
-html[data-season="christmas"] .site-header { position: relative; z-index: 2; }
+html[data-season="christmas"] .site-header { z-index: 30; } /* stays sticky (the header is already positioned) */
 html[data-season="christmas"] .site-header::before {
   content: ''; position: absolute; left: 0; right: 0; top: 0; height: 10px; pointer-events: none;
   background: var(--xmas-snow-edge) left top / 80px 10px repeat-x;
@@ -124,24 +124,16 @@ html[data-season="christmas"] .carousel-stage::after {
   pointer-events: none;
 }
 
-/* ---------- The home page: the Christmas hero band and gift rows (made by christmas.js) ---------- */
-.xmas-hero {
-  position: relative; overflow: hidden; margin: var(--space-4) 0 var(--space-6); padding: var(--space-5);
-  border-radius: var(--radius-lg); background: var(--inverse); color: var(--on-inverse);
-}
-.xmas-hero h2 { font: var(--text-type-display); font-size: clamp(26px, 6vw, 36px); line-height: 1.15; margin: 0 0 var(--space-2); max-width: 18ch; }
-html[data-season="christmas"] .xmas-hero h2::after { display: none; }
-.xmas-hero p { color: var(--on-inverse-muted); margin: 0 0 var(--space-4); max-width: 46ch; }
-.xmas-hero { padding-bottom: calc(var(--space-5) + 34px); }
-.xmas-hero::after {
-  content: ''; position: absolute; right: 14px; bottom: 12px; width: 64px; height: 42px; opacity: 0.95; pointer-events: none;
+/* ---------- The home page: the banner dressed for Christmas, and the gift rows (made by christmas.js) ---------- */
+html[data-season="christmas"] .home-banner.is-christmas { background: var(--inverse); color: var(--on-inverse); }
+html[data-season="christmas"] .home-banner.is-christmas h1 { color: var(--on-inverse); }
+html[data-season="christmas"] .home-banner.is-christmas p { color: var(--on-inverse-muted); }
+html[data-season="christmas"] .home-banner.is-christmas::after {
+  content: ''; position: absolute; right: 14px; bottom: 12px; width: 64px; height: 42px; pointer-events: none;
   background: var(--xmas-holly) center / contain no-repeat;
 }
-/* The hero's "Shop gifts" is the home page's one accent, so "Start selling" steps back for the season. */
-html[data-season="christmas"] .sell-band .button.accent { background: var(--surface); color: var(--ink); border: 2px solid var(--line-strong); }
-
 /* ---------- The bag: a gift sack (christmas.js swaps the icon; the rolling count stays) ---------- */
-html[data-season="christmas"] .bag-link svg { color: var(--accent-ink); }
+html[data-season="christmas"] .bag-link.is-empty svg { color: var(--accent-ink); }
 
 /* ---------- Snowfall and the footer switch ---------- */
 .xmas-snow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
