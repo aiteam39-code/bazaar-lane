@@ -6,15 +6,17 @@
 // If those files are missing, the season is simply never shown, and the store stays normal.
 const fs = require('fs');
 const path = require('path');
-const { db, DB_FILE } = require('./db');
+const { db } = require('./db');
 
 const SEASON_FOLDER = path.join(__dirname, 'public', 'seasons');
 
-// "Now" for seasons and date promises. A TEST copy may move its clock with TEST_CLOCK (an ISO date); the owner's real
-// marketplace.db never does, so the real store always uses the real date.
+// "Now" for seasons and date promises. A TEST copy may move its clock with TEST_CLOCK (an ISO date), but only when
+// ALLOW_TEST_CLOCK=1 is set too (check.js does that for its own copy) and never in production, so the owner's real
+// store always uses the real date.
 function seasonNow() {
   const testClock = process.env.TEST_CLOCK;
-  if (testClock && path.basename(DB_FILE) !== 'marketplace.db') {
+  const clockMayMove = process.env.ALLOW_TEST_CLOCK === '1' && process.env.NODE_ENV !== 'production';
+  if (testClock && clockMayMove) {
     const moved = new Date(testClock);
     if (!Number.isNaN(moved.getTime())) return moved;
   }
@@ -33,18 +35,18 @@ function hasFiles(key) {
 }
 
 // The season that is on right now, or null.
-function currentSeason() {
+async function currentSeason() {
   const now = localStamp(seasonNow());
-  const season = db.prepare('SELECT * FROM seasons WHERE enabled = 1 AND starts_at <= ? AND ends_at >= ? ORDER BY starts_at LIMIT 1').get(now, now);
+  const season = await db.get('SELECT * FROM seasons WHERE enabled = 1 AND starts_at <= ? AND ends_at >= ? ORDER BY starts_at LIMIT 1', now, now);
   return season && hasFiles(season.key) ? season : null;
 }
 
 // The season a page should wear: the current one, or (only for a logged-in admin) the one asked for with
 // ?preview=<key>. A customer's ?preview does nothing.
-function seasonForRequest(req) {
+async function seasonForRequest(req) {
   const wanted = typeof req.query.preview === 'string' ? req.query.preview : '';
   if (wanted && req.user && req.user.role === 'admin') {
-    const season = db.prepare('SELECT * FROM seasons WHERE key = ?').get(wanted);
+    const season = await db.get('SELECT * FROM seasons WHERE key = ?', wanted);
     if (season && hasFiles(season.key)) return { ...season, preview: true };
   }
   return currentSeason();

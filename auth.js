@@ -96,21 +96,21 @@ function likePattern(searchText) {
 // ---------- Logging in ----------
 
 // Checks an email and password. Returns the user, or throws a plain message (401 wrong, 423 locked).
-function checkLogin(emailInput, passwordInput) {
+async function checkLogin(emailInput, passwordInput) {
   const email = cleanEmail(emailInput);
   const password = typeof passwordInput === 'string' ? passwordInput : '';
   if (!email || !password) throw new HttpError(400, 'Please enter your email and password.');
   if (password.length > 200) throw new HttpError(401, WRONG_LOGIN);
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const user = await db.get('SELECT * FROM users WHERE email = ?', email);
   if (!user) {
     passwordMatches(password, DUMMY_HASH);
     throw new HttpError(401, WRONG_LOGIN);
   }
   if (isLocked(user)) throw new HttpError(423, lockedMessage(user));
-  if (!passwordMatches(password, user.password_hash)) recordWrongPassword(user.id);
+  if (!passwordMatches(password, user.password_hash)) await recordWrongPassword(user.id);
 
-  db.prepare('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?').run(user.id);
+  await db.run('UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?', user.id);
   return user;
 }
 
@@ -126,13 +126,13 @@ function lockedMessage(user) {
 }
 
 // Counts a wrong password. The 5th in a row locks the account for 5 minutes. Always throws.
-function recordWrongPassword(userId) {
-  const { failed_logins } = db.prepare(
-    'UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ? RETURNING failed_logins'
-  ).get(userId);
+async function recordWrongPassword(userId) {
+  const { failed_logins } = await db.get(
+    'UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ? RETURNING failed_logins', userId
+  );
   if (failed_logins >= MAX_WRONG_PASSWORDS) {
     const lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60000).toISOString();
-    db.prepare('UPDATE users SET failed_logins = 0, locked_until = ? WHERE id = ?').run(lockedUntil, userId);
+    await db.run('UPDATE users SET failed_logins = 0, locked_until = ? WHERE id = ?', lockedUntil, userId);
     throw new HttpError(423, `Too many wrong passwords. This account is locked for ${LOCK_MINUTES} minutes.`);
   }
   throw new HttpError(401, WRONG_LOGIN);
@@ -141,11 +141,11 @@ function recordWrongPassword(userId) {
 // ---------- Sessions ----------
 
 // Starts a session: a long random token saved in the database and in an httpOnly cookie, for 8 hours.
-function startSession(res, userId) {
+async function startSession(res, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600 * 1000).toISOString();
-  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(nowIso()); // tidy up old sessions
-  db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  await db.run('DELETE FROM sessions WHERE expires_at <= ?', nowIso()); // tidy up old sessions
+  await db.run('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', token, userId, expiresAt);
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,     // page scripts cannot read it
     sameSite: 'lax',    // other websites cannot send it with their forms
@@ -156,9 +156,9 @@ function startSession(res, userId) {
 }
 
 // Ends the current session (log out) and removes the cookie.
-function endSession(req, res) {
+async function endSession(req, res) {
   const token = readSessionToken(req);
-  if (token) db.prepare('DELETE FROM sessions WHERE id = ?').run(token);
+  if (token) await db.run('DELETE FROM sessions WHERE id = ?', token);
   res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'lax', path: '/' });
 }
 
@@ -173,14 +173,14 @@ function readSessionToken(req) {
 }
 
 // Runs before every request: finds who is logged in and puts them in req.user (or null).
-function loadUser(req, res, next) {
+async function loadUser(req, res, next) {
   req.user = null;
   const token = readSessionToken(req);
   if (token) {
-    req.user = db.prepare(`
+    req.user = await db.get(`
       SELECT users.id, users.email, users.role, users.seller_id
       FROM sessions JOIN users ON users.id = sessions.user_id
-      WHERE sessions.id = ? AND sessions.expires_at > ?`).get(token, nowIso()) || null;
+      WHERE sessions.id = ? AND sessions.expires_at > ?`, token, nowIso()) || null;
   }
   next();
 }
@@ -188,14 +188,14 @@ function loadUser(req, res, next) {
 // ---------- Who may do what ----------
 
 // Only people who are logged in. Otherwise 401.
-function requireLogin(req, res, next) {
+async function requireLogin(req, res, next) {
   if (!req.user) throw new HttpError(401, 'Please log in first.');
   next();
 }
 
 // Only people with this role ('admin' or 'seller'). 401 when not logged in, 403 for the wrong role.
 function requireRole(role) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) throw new HttpError(401, 'Please log in first.');
     if (req.user.role !== role) throw new HttpError(403, 'You are not allowed to do this.');
     next();
@@ -205,10 +205,10 @@ function requireRole(role) {
 // Only sellers whose shop has one of these statuses, for example requireSeller('active').
 // Puts the seller's own shop in req.shop.
 function requireSeller(...allowedStatuses) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) throw new HttpError(401, 'Please log in first.');
     if (req.user.role !== 'seller') throw new HttpError(403, 'Only sellers can do this.');
-    const shop = db.prepare('SELECT * FROM sellers WHERE id = ?').get(req.user.seller_id);
+    const shop = await db.get('SELECT * FROM sellers WHERE id = ?', req.user.seller_id);
     if (!allowedStatuses.includes(shop.status)) throw new HttpError(403, shopBlockedMessage(shop));
     req.shop = shop;
     next();
@@ -224,6 +224,7 @@ function shopBlockedMessage(shop) {
 }
 
 // Stops a seller from touching anything that belongs to another shop (403). Use it on every product, order and earning.
+// It needs no database, so it stays a plain (not async) function: it throws at once, awaited or not.
 function requireOwnShop(req, sellerId) {
   if (!req.user || req.user.role !== 'seller' || req.user.seller_id !== sellerId) {
     throw new HttpError(403, 'This belongs to another shop.');
@@ -236,7 +237,7 @@ const OPEN_STAFF_PAGES = ['/seller/signup.html', '/seller/signup.js'];
 // Guards the staff pages: /admin/... only for the admin, /seller/... only for sellers (the sign-up page is open to all).
 // Not logged in goes to the login page; the wrong role gets 403. It runs before the file server, for every request,
 // and reads the address the way the file server does, so tricks like /%61dmin/, //admin/ or /x/../admin/ still meet it.
-function protectStaffPages(req, res, next) {
+async function protectStaffPages(req, res, next) {
   const page = cleanPagePath(req.path);
   const role = staffRoleFor(page);
   if (!role || OPEN_STAFF_PAGES.includes(page)) return next();

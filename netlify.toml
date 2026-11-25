@@ -1,0 +1,23 @@
+# netlify.toml - how Netlify runs Bazaar Lane. There is no build step: every address goes to one function that runs
+# the same Express app as the laptop (app.js). The database is Supabase: set DATABASE_URL in Netlify's site settings
+# (Site configuration > Environment variables). Never write it in this file.
+[build]
+  publish = "netlify/static"
+  command = "echo 'No build step'"
+
+[functions]
+  node_bundler = "nft"
+  included_files = ["public/**", "kit/**", "sample-photos/**", "node_modules/react/umd/**", "node_modules/react-dom/umd/**", "node_modules/@fontsource/instrument-sans/**"]
+
+[functions."expire-payments"]
+  schedule = "*/5 * * * *"
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/app/:splat"
+  status = 200
+  force = true
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--omit=dev" # the laptop-only Postgres (embedded-postgres) is not installed live

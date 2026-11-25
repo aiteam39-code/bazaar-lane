@@ -14,7 +14,7 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:3000. The first start creates `marketplace.db` with sample shops, 21 categories, 52 products and photos. `npm run dev` restarts the app by itself when you save a file.
+Then open http://localhost:3000. On a laptop the app starts its own small Postgres database in the `pgdata` folder (the first start takes a little longer: it sets it up and adds sample shops, 21 categories, 52 products and photos). `npm run dev` restarts the app by itself when you save a file.
 
 ### Test logins
 
@@ -35,9 +35,10 @@ This starts a separate test copy of the app (port 3101, its own database in your
 ## How the project is built
 
 - `CLAUDE.md` is the project notebook: the rules, the full checklist and what has been built. Read it first.
-- Node.js and Express, SQLite through better-sqlite3 (one file, `marketplace.db`), plain HTML, CSS and JavaScript in `public/`. No build step.
+- Node.js and Express, Postgres (`db.js` is the only file that talks to it), plain HTML, CSS and JavaScript in `public/`. No build step.
+- Live, the site runs on Netlify (`netlify.toml`, `netlify/functions/`) with its data in Supabase. The connection is the `DATABASE_URL` secret, set only in Netlify's settings.
 - The look comes from the Interaction Kit in `kit/` (do not edit it): its colour tokens, the Instrument Sans font and its 14 components (`window.IK`).
-- `server.js` starts the app. `routes/` has one file per area. `orderStatus.js` is the only place an order's status changes. Money is stored as whole paise.
+- `app.js` is the app; `server.js` starts it on a laptop. `routes/` has one file per area. `orderStatus.js` is the only place an order's status changes. Money is stored as whole paise.
 
 ## Working together
 
@@ -46,7 +47,7 @@ This starts a separate test copy of the app (port 3101, its own database in your
 3. Make the change, run `npm run check`, then commit and push the branch: `git push -u origin my-change`.
 4. Open a pull request on GitHub so someone else can look at it before it goes into `main`.
 
-Never commit your own `marketplace.db`, the `uploads/` and `backups/` folders, or a `.env` file. `.gitignore` already keeps them out. Never put real payment keys in the code: the app only takes Razorpay TEST keys, from environment variables.
+Never commit the `pgdata/` and `backups/` folders or a `.env` file. `.gitignore` already keeps them out. Never put the database password or real payment keys in the code: the app only takes Razorpay TEST keys, from environment variables.
 
 ## Photos
 

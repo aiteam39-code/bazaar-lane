@@ -33,7 +33,7 @@ function shortDescription(text) {
 // While a season is on (seasons.js), the page also gets data-season="<key>" on its <html> tag and that season's CSS
 // and script, written in here on the server, so the festival look shows from the first paint. When no season is
 // on, nothing of the season is sent at all.
-function sendPage(res, file, { title, description, status = 200, fill = {} } = {}) {
+async function sendPage(res, file, { title, description, status = 200, fill = {} } = {}) {
   let html = fs.readFileSync(path.join(PUBLIC_FOLDER, file), 'utf8');
   for (const [name, text] of Object.entries(fill)) html = html.split(`{{${name}}}`).join(escapeHtml(text));
   if (title) {
@@ -41,7 +41,7 @@ function sendPage(res, file, { title, description, status = 200, fill = {} } = {
     html = html.replace(/<title>[\s\S]*?<\/title>/i,
       `<title>${escapeHtml(title)}</title>\n  <meta name="description" content="${escapeHtml(shortDescription(description))}">`);
   }
-  html = dressForSeason(html, seasonForRequest(res.req));
+  html = dressForSeason(html, await seasonForRequest(res.req));
   res.status(status).type('html').send(html);
 }
 

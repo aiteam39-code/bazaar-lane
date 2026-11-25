@@ -1,14 +1,13 @@
 // photos.js - the ONE way a photo gets into the store (products, category tiles, promo cards): the file itself is the
 // request body; JPEG, PNG or WebP by its first bytes only (never its name or the type the browser says); at most 2 MB;
-// saved in the uploads folder under a new random name, never overwriting; the old file of that item is removed.
+// saved in the database's photos table under a new random name, never overwriting; the old photo of that item is removed.
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const express = require('express');
-const { UPLOADS_DIR } = require('./db');
+const { savePhotoBytes, deletePhoto } = require('./db');
 const { HttpError } = require('./auth');
 
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // a photo is at most 2 MB
+const TYPES = { '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 
 // The body reader for a photo upload (a bigger file is refused with "The photo must be 2 MB or smaller.").
 const readPhotoBody = express.raw({ type: () => true, limit: MAX_PHOTO_BYTES });
@@ -22,23 +21,21 @@ function photoExtension(bytes) {
   return null;
 }
 
-// Checks and saves the uploaded bytes. Returns the new random file name. Throws a plain message for a bad file.
-function savePhoto(body) {
+// Checks and saves the uploaded bytes. Returns the new random name. Throws a plain message for a bad file.
+async function savePhoto(body) {
   const bytes = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
   if (bytes.length === 0) throw new HttpError(400, 'Please choose a photo to upload.');
   if (bytes.length > MAX_PHOTO_BYTES) throw new HttpError(413, 'The photo must be 2 MB or smaller.');
   const extension = photoExtension(bytes);
   if (!extension) throw new HttpError(400, 'The photo must be a JPEG, PNG or WebP picture.');
-  const fileName = crypto.randomBytes(16).toString('hex') + extension;
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  fs.writeFileSync(path.join(UPLOADS_DIR, fileName), bytes, { flag: 'wx' }); // wx: never overwrites a file
-  return fileName;
+  const name = crypto.randomBytes(16).toString('hex') + extension;
+  await savePhotoBytes(name, TYPES[extension], bytes);
+  return name;
 }
 
-// Deletes a photo file this app saved earlier (only names it made itself, so nothing else can ever be deleted).
-function removeOldPhoto(fileName) {
-  if (!fileName || !/^[a-f0-9]{32}\.(jpg|png|webp)$/.test(fileName)) return;
-  fs.rmSync(path.join(UPLOADS_DIR, fileName), { force: true }); // done before the answer, so the old file is surely gone
+// Deletes a photo this app saved earlier (only names it made itself, so nothing else can ever be deleted).
+async function removeOldPhoto(name) {
+  await deletePhoto(name);
 }
 
 module.exports = { MAX_PHOTO_BYTES, readPhotoBody, photoExtension, savePhoto, removeOldPhoto };

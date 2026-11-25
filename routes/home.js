@@ -21,60 +21,62 @@ const PLAIN_WORDS = new Set(['set', 'pack', 'box', 'pair', 'kit', 'mix', 'small'
 const BUYABLE = `products.active = 1 AND products.deleted = 0 AND products.hidden = 0 AND products.stock > 0 AND sellers.status = 'active'`;
 
 // The home page's first answer: the delivery range, the search words, the category tiles and the promo cards.
-router.get('/api/home', (req, res) => {
+router.get('/api/home', async (req, res) => {
   res.json({
-    delivery: deliveryRange(),
-    search_words: searchWords(),
-    categories: categoryTiles(),
-    promo_cards: promoCards(true),
+    delivery: await deliveryRange(),
+    search_words: await searchWords(),
+    categories: await categoryTiles(),
+    promo_cards: await promoCards(true),
   });
 });
 
 // What every page's header needs: the real delivery range and the words the search box rotates through.
-router.get('/api/header', (req, res) => {
-  res.json({ delivery: deliveryRange(), search_words: searchWords() });
+router.get('/api/header', async (req, res) => {
+  res.json({ delivery: await deliveryRange(), search_words: await searchWords() });
 });
 
 // The category rows: offset and limit (1 to 12). Each row is a category that has products that can be bought, with
 // its newest 12. "done" says there are no more rows.
-router.get('/api/home/rows', (req, res) => {
+router.get('/api/home/rows', async (req, res) => {
   const offset = Math.max(Number.parseInt(req.query.offset, 10) || 0, 0);
   const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 6, 1), MOST_ROWS_AT_ONCE);
-  const tiles = categoryTiles();
-  const rows = tiles.slice(offset, offset + limit).map((tile) => ({
-    category: { id: tile.id, name: tile.name, slug: tile.slug },
-    products: db.prepare(`
+  const tiles = await categoryTiles();
+  const rows = [];
+  for (const tile of tiles.slice(offset, offset + limit)) {
+    const products = await db.all(`
       SELECT products.id, products.name, products.photo, products.price, products.size_label, products.giftable,
              CASE WHEN products.stock BETWEEN 1 AND 5 THEN products.stock END AS few_left,
              sellers.shop_name, sellers.slug AS shop_slug, sellers.city, sellers.dispatch_days
       FROM products JOIN sellers ON sellers.id = products.seller_id
       WHERE products.category_id = ? AND ${BUYABLE}
-      ORDER BY products.created_at DESC, products.id DESC LIMIT ?`).all(tile.id, PRODUCTS_PER_ROW).map(rowProduct),
-  }));
+      ORDER BY products.created_at DESC, products.id DESC LIMIT ?`, tile.id, PRODUCTS_PER_ROW);
+    rows.push({ category: { id: tile.id, name: tile.name, slug: tile.slug }, products: products.map(rowProduct) });
+  }
   res.json({ rows, next_offset: offset + rows.length, done: offset + rows.length >= tiles.length });
 });
 
 // The real delivery range: the fastest open shop's dispatch days + 2 to the slowest one's + 5 (only shops with
 // products that can be bought). Null when no shop sells anything.
-function deliveryRange() {
-  const range = db.prepare(`
+async function deliveryRange() {
+  const range = await db.get(`
     SELECT MIN(sellers.dispatch_days) AS fastest, MAX(sellers.dispatch_days) AS slowest
     FROM sellers WHERE sellers.status = 'active' AND EXISTS (
       SELECT 1 FROM products WHERE products.seller_id = sellers.id AND products.active = 1 AND products.deleted = 0
-        AND products.hidden = 0 AND products.stock > 0)`).get();
+        AND products.hidden = 0 AND products.stock > 0)`);
   return range.fastest ? { from_days: range.fastest + 2, to_days: range.slowest + 5 } : null;
 }
 
 // Every category that has products that can be bought, with its photo (its own, else a product's) for the tile.
-function categoryTiles() {
-  return db.prepare(`
+async function categoryTiles() {
+  const categories = await db.all(`
     SELECT categories.id, categories.name, categories.photo,
       (SELECT COUNT(*) FROM products JOIN sellers ON sellers.id = products.seller_id WHERE products.category_id = categories.id AND ${BUYABLE}) AS product_count,
       (SELECT products.id FROM products JOIN sellers ON sellers.id = products.seller_id WHERE products.category_id = categories.id AND ${BUYABLE}
        ORDER BY products.photo IS NULL, products.created_at DESC LIMIT 1) AS cover_product_id,
       (SELECT products.photo FROM products JOIN sellers ON sellers.id = products.seller_id WHERE products.category_id = categories.id AND ${BUYABLE}
        ORDER BY products.photo IS NULL, products.created_at DESC LIMIT 1) AS cover_photo
-    FROM categories ORDER BY categories.name COLLATE NOCASE`).all()
+    FROM categories ORDER BY categories.name COLLATE NOCASE`);
+  return categories
     .filter((category) => category.product_count > 0)
     .map((category) => ({
       id: category.id, name: category.name, slug: slugify(category.name), product_count: category.product_count,
@@ -94,8 +96,8 @@ function rowProduct(row) {
 }
 
 // Short real words from the names of products that can be bought ("pickle", "planter", "stole"), for the search box.
-function searchWords() {
-  const names = db.prepare(`SELECT products.name FROM products JOIN sellers ON sellers.id = products.seller_id WHERE ${BUYABLE} ORDER BY products.id`).all();
+async function searchWords() {
+  const names = await db.all(`SELECT products.name FROM products JOIN sellers ON sellers.id = products.seller_id WHERE ${BUYABLE} ORDER BY products.id`);
   const words = new Set();
   for (const { name } of names) {
     const last = name.replace(/\(.*?\)/g, '').trim().split(/\s+/).pop().toLowerCase();
@@ -105,9 +107,9 @@ function searchWords() {
 }
 
 // The promo cards in order (only the switched-on ones for customers).
-function promoCards(onlyEnabled) {
-  return db.prepare(`SELECT * FROM promo_cards ${onlyEnabled ? 'WHERE enabled = 1' : ''} ORDER BY position, id`).all()
-    .map(({ photo, ...card }) => ({ ...card, tone: allowedTone(card.tone), photo_url: photoUrl(photo) }));
+async function promoCards(onlyEnabled) {
+  const cards = await db.all(`SELECT * FROM promo_cards ${onlyEnabled ? 'WHERE enabled = 1' : ''} ORDER BY position, id`);
+  return cards.map(({ photo, ...card }) => ({ ...card, tone: allowedTone(card.tone), photo_url: photoUrl(photo) }));
 }
 
 // A card's colour as one of TONES (an old success or danger colour becomes a soft one).
@@ -118,13 +120,13 @@ function allowedTone(tone) {
 // ---------- Admin: promo cards and category photos ----------
 
 // Admin: every promo card, on or off.
-router.get('/api/admin/promo-cards', auth.requireRole('admin'), (req, res) => {
-  res.json({ cards: promoCards(false), tones: TONES });
+router.get('/api/admin/promo-cards', auth.requireRole('admin'), async (req, res) => {
+  res.json({ cards: await promoCards(false), tones: TONES });
 });
 
 // Admin: change a promo card's words, link, colour, place, or switch it on or off.
-router.put('/api/admin/promo-cards/:id', auth.requireRole('admin'), (req, res) => {
-  const card = db.prepare('SELECT * FROM promo_cards WHERE id = ?').get(auth.readId(req.params.id));
+router.put('/api/admin/promo-cards/:id', auth.requireRole('admin'), async (req, res) => {
+  const card = await db.get('SELECT * FROM promo_cards WHERE id = ?', auth.readId(req.params.id));
   if (!card) throw new HttpError(404, 'That promo card does not exist.');
   const body = req.body || {};
   const title = body.title === undefined ? card.title : auth.cleanText(body.title).replace(/\s+/g, ' ');
@@ -135,39 +137,39 @@ router.put('/api/admin/promo-cards/:id', auth.requireRole('admin'), (req, res) =
   if (title.length < 3 || title.length > 50) throw new HttpError(400, 'A title must be 3 to 50 characters.');
   if (line.length > 80) throw new HttpError(400, 'The short line must be 80 characters or fewer.');
   if (!TONES.includes(tone)) throw new HttpError(400, 'Please choose one of the colours.');
-  checkLink(link);
-  db.prepare('UPDATE promo_cards SET title = ?, line = ?, link = ?, tone = ?, enabled = ? WHERE id = ?').run(title, line, link, tone, enabled, card.id);
+  await checkLink(link);
+  await db.run('UPDATE promo_cards SET title = ?, line = ?, link = ?, tone = ?, enabled = ? WHERE id = ?', title, line, link, tone, enabled, card.id);
   res.json({ ok: true, message: `${title}: ${enabled ? 'shown' : 'hidden'} on the home page.` });
 });
 
 // Admin: a promo card's photo (the same rules as a seller's product photo).
-router.post('/api/admin/promo-cards/:id/photo', auth.requireRole('admin'), readPhotoBody, (req, res) => {
-  const card = db.prepare('SELECT * FROM promo_cards WHERE id = ?').get(auth.readId(req.params.id));
+router.post('/api/admin/promo-cards/:id/photo', auth.requireRole('admin'), readPhotoBody, async (req, res) => {
+  const card = await db.get('SELECT * FROM promo_cards WHERE id = ?', auth.readId(req.params.id));
   if (!card) throw new HttpError(404, 'That promo card does not exist.');
-  const fileName = savePhoto(req.body);
-  db.prepare('UPDATE promo_cards SET photo = ? WHERE id = ?').run(fileName, card.id);
-  removeOldPhoto(card.photo);
+  const fileName = await savePhoto(req.body);
+  await db.run('UPDATE promo_cards SET photo = ? WHERE id = ?', fileName, card.id);
+  await removeOldPhoto(card.photo);
   res.json({ ok: true, photo_url: photoUrl(fileName), message: 'The photo was saved.' });
 });
 
 // Admin: a category tile's photo (the same rules).
-router.post('/api/admin/categories/:id/photo', auth.requireRole('admin'), readPhotoBody, (req, res) => {
-  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(auth.readId(req.params.id));
+router.post('/api/admin/categories/:id/photo', auth.requireRole('admin'), readPhotoBody, async (req, res) => {
+  const category = await db.get('SELECT * FROM categories WHERE id = ?', auth.readId(req.params.id));
   if (!category) throw new HttpError(404, 'That category does not exist.');
-  const fileName = savePhoto(req.body);
-  db.prepare('UPDATE categories SET photo = ? WHERE id = ?').run(fileName, category.id);
-  removeOldPhoto(category.photo);
+  const fileName = await savePhoto(req.body);
+  await db.run('UPDATE categories SET photo = ? WHERE id = ?', fileName, category.id);
+  await removeOldPhoto(category.photo);
   res.json({ ok: true, photo_url: photoUrl(fileName), message: `The photo of ${category.name} was saved.` });
 });
 
 // A promo card links only to a real page of this store: a category that exists, a shop, search, a season's collection,
 // Sell with us or a help page. Never to another website.
-function checkLink(link) {
+async function checkLink(link) {
   const bad = () => new HttpError(400, 'The link must be a page of this store, like /category/pet-care or /search?giftable=1.');
   if (!/^\/[a-z0-9\-/?=&.%]*$/i.test(link) || link.startsWith('//') || link.length > 120) throw bad();
   const category = /^\/category\/([a-z0-9-]+)$/.exec(link);
   if (category) {
-    const exists = db.prepare('SELECT name FROM categories').all().some((row) => slugify(row.name) === category[1]);
+    const exists = (await db.all('SELECT name FROM categories')).some((row) => slugify(row.name) === category[1]);
     if (!exists) throw new HttpError(400, 'That category does not exist.');
     return;
   }

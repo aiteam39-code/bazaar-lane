@@ -27,11 +27,11 @@ const HELP_PAGES = [
 
 // Each help page at its clean address.
 for (const [address, file, title, description] of HELP_PAGES) {
-  router.get(address, (req, res) => sendPage(res, 'help/' + file, { title: pageTitle(title), description }));
+  router.get(address, async (req, res) => { await sendPage(res, 'help/' + file, { title: pageTitle(title), description }); });
 }
 
 // The contact form: a name (2-60), a valid email and a message (1-2000). The admin reads it on the Messages page.
-router.post('/api/contact', (req, res) => {
+router.post('/api/contact', async (req, res) => {
   const body = req.body || {};
   const name = auth.cleanText(body.name).replace(/\s+/g, ' ');
   const email = auth.cleanEmail(body.email);
@@ -40,33 +40,33 @@ router.post('/api/contact', (req, res) => {
   if (!auth.isValidEmail(email)) throw new HttpError(400, 'Please enter a valid email, like name@example.com.');
   if (!message) throw new HttpError(400, 'Please write your message.');
   if (message.length > 2000) throw new HttpError(400, 'Please keep your message to 2000 characters or fewer.');
-  db.prepare('INSERT INTO contact_messages (name, email, message, handled, created_at) VALUES (?, ?, ?, 0, ?)').run(name, email, message, nowIso());
+  await db.run('INSERT INTO contact_messages (name, email, message, handled, created_at) VALUES (?, ?, ?, 0, ?)', name, email, message, nowIso());
   res.status(201).json({ ok: true, message: 'Thank you. We reply within 2 working days.' });
 });
 
 // Admin: the contact messages, newest first, and how many are not handled yet.
-router.get('/api/admin/messages', auth.requireRole('admin'), (req, res) => {
-  const messages = db.prepare('SELECT * FROM contact_messages ORDER BY handled, id DESC LIMIT 200').all();
+router.get('/api/admin/messages', auth.requireRole('admin'), async (req, res) => {
+  const messages = await db.all('SELECT * FROM contact_messages ORDER BY handled, id DESC LIMIT 200');
   res.json({ messages, open_count: messages.filter((m) => !m.handled).length });
 });
 
 // Admin: mark a message handled.
-router.post('/api/admin/messages/:id/handled', auth.requireRole('admin'), (req, res) => {
-  const done = db.prepare('UPDATE contact_messages SET handled = 1 WHERE id = ?').run(auth.readId(req.params.id));
+router.post('/api/admin/messages/:id/handled', auth.requireRole('admin'), async (req, res) => {
+  const done = await db.run('UPDATE contact_messages SET handled = 1 WHERE id = ?', auth.readId(req.params.id));
   if (done.changes !== 1) throw new HttpError(404, 'That message does not exist.');
   res.json({ ok: true, message: 'Marked handled.' });
 });
 
 // The newsletter: an email and a ticked consent box. The answer is the same whether or not it was already signed up.
-router.post('/api/newsletter', (req, res) => {
+router.post('/api/newsletter', async (req, res) => {
   const body = req.body || {};
   const email = auth.cleanEmail(body.email);
   if (!auth.isValidEmail(email)) throw new HttpError(400, 'Please enter a valid email, like name@example.com.');
   if (body.consent !== true) throw new HttpError(400, 'Please tick the box to say we may email you.');
   const token = crypto.randomBytes(24).toString('hex');
-  const added = db.prepare('INSERT OR IGNORE INTO newsletter (email, consent_at, unsubscribe_token) VALUES (?, ?, ?)').run(email, nowIso(), token);
+  const added = await db.run('INSERT OR IGNORE INTO newsletter (email, consent_at, unsubscribe_token) VALUES (?, ?, ?)', email, nowIso(), token);
   if (added.changes === 1) {
-    mail.sendEmail(email, `You are on the ${MARKETPLACE_NAME} newsletter`, [
+    await mail.sendEmail(email, `You are on the ${MARKETPLACE_NAME} newsletter`, [
       'Thank you for signing up. We write about once a month, about new shops and new products.',
       `To stop at any time, open: ${SITE_URL}/unsubscribe/${token}`,
     ]);
@@ -75,10 +75,10 @@ router.post('/api/newsletter', (req, res) => {
 });
 
 // /unsubscribe/<token>: removes that email from the newsletter and says so.
-router.get('/unsubscribe/:token', (req, res) => {
+router.get('/unsubscribe/:token', async (req, res) => {
   const token = String(req.params.token);
-  const removed = /^[a-f0-9]{48}$/.test(token) ? db.prepare('DELETE FROM newsletter WHERE unsubscribe_token = ?').run(token).changes : 0;
-  sendPage(res, 'help/unsubscribe.html', {
+  const removed = /^[a-f0-9]{48}$/.test(token) ? (await db.run('DELETE FROM newsletter WHERE unsubscribe_token = ?', token)).changes : 0;
+  await sendPage(res, 'help/unsubscribe.html', {
     title: pageTitle('Newsletter'),
     description: 'Stop the newsletter.',
     fill: {
@@ -90,14 +90,14 @@ router.get('/unsubscribe/:token', (req, res) => {
 
 // /sitemap.xml: the home page, search, Sell with us, the help pages, the open shops, the categories and every product
 // that can be bought.
-router.get('/sitemap.xml', (req, res) => {
+router.get('/sitemap.xml', async (req, res) => {
   const addresses = ['/', '/search', '/sell', ...HELP_PAGES.map(([address]) => address)];
-  for (const shop of db.prepare("SELECT slug FROM sellers WHERE status = 'active' ORDER BY id").all()) addresses.push('/store/' + shop.slug);
-  for (const category of db.prepare('SELECT name FROM categories ORDER BY id').all()) addresses.push('/category/' + slugify(category.name));
-  const products = db.prepare(`
+  for (const shop of await db.all("SELECT slug FROM sellers WHERE status = 'active' ORDER BY id")) addresses.push('/store/' + shop.slug);
+  for (const category of await db.all('SELECT name FROM categories ORDER BY id')) addresses.push('/category/' + slugify(category.name));
+  const products = await db.all(`
     SELECT products.id, products.name FROM products JOIN sellers ON sellers.id = products.seller_id
     WHERE products.active = 1 AND products.deleted = 0 AND products.hidden = 0 AND products.stock > 0 AND sellers.status = 'active'
-    ORDER BY products.id`).all();
+    ORDER BY products.id`);
   for (const product of products) addresses.push(productAddress(product));
   const xmlSafe = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const urls = addresses.map((address) => `  <url><loc>${xmlSafe(SITE_URL + address)}</loc></url>`).join('\n');
@@ -111,9 +111,9 @@ router.get('/robots.txt', (req, res) => {
 });
 
 // The friendly "page not found" page (status 404), with the search box and a link home. server.js uses it last.
-function sendNotFound(req, res) {
+async function sendNotFound(req, res) {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'That address does not exist.' });
-  sendPage(res, 'help/not-found.html', { status: 404, title: pageTitle('Page not found'), description: 'This page does not exist.' });
+  await sendPage(res, 'help/not-found.html', { status: 404, title: pageTitle('Page not found'), description: 'This page does not exist.' });
 }
 
 module.exports = router;

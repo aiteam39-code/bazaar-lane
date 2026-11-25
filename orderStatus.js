@@ -57,10 +57,10 @@ function firstStatusFor(paymentMethod) {
 
 // Writes the first status of a brand-new seller order into status_log. Only checkout calls this, inside its transaction.
 // The customer made it, by placing the order.
-function logFirstStatus(sellerOrderId, status) {
+async function logFirstStatus(sellerOrderId, status) {
   if (status !== 'placed' && status !== 'pending_payment') throw new Error(`A new order cannot start as ${status}.`);
-  db.prepare('INSERT INTO status_log (seller_order_id, status, by_role, at) VALUES (?, ?, ?, ?)')
-    .run(sellerOrderId, status, 'customer', nowIso());
+  await db.run('INSERT INTO status_log (seller_order_id, status, by_role, at) VALUES (?, ?, ?, ?)',
+    sellerOrderId, status, 'customer', nowIso());
 }
 
 // ---------- Changing a status ----------
@@ -71,34 +71,39 @@ function logFirstStatus(sellerOrderId, status) {
 // Returns the seller order as it is now. Throws an HttpError with a plain message when the move is not allowed.
 // Everything happens in one transaction: the status, the status_log line and (for rejected or cancelled)
 // putting the stock back all happen together, or not at all.
-function changeStatus(sellerOrderId, newStatus, who, details = {}) {
-  return changeStatusInOneGo.immediate(sellerOrderId, newStatus, who, details || {});
+async function changeStatus(sellerOrderId, newStatus, who, details = {}) {
+  return db.tx(() => changeStatusInOneGo(sellerOrderId, newStatus, who, details || {}));
 }
 
-const changeStatusInOneGo = db.transaction((sellerOrderId, newStatus, who, details) => {
+// The work of changeStatus, inside its transaction.
+async function changeStatusInOneGo(sellerOrderId, newStatus, who, details) {
   checkWho(who);
   if (!Object.hasOwn(STATUS_WORDS, String(newStatus))) throw new HttpError(400, 'That is not a status an order can have.');
-  const order = findOrderFor(sellerOrderId, who);
+  // One change at a time for this seller order (as SQLite's immediate transaction did): a second one waits, then reads
+  // the new status and gets the clear message.
+  const lockId = Number(sellerOrderId);
+  if (Number.isSafeInteger(lockId) && lockId > 0 && lockId <= 2147483647) await db.lock('seller_order_status', lockId);
+  const order = await findOrderFor(sellerOrderId, who);
   const move = findMove(order.status, newStatus);
   checkWhoMayMakeIt(move, who);
   const given = readWhatTheMoveNeeds(move, details, who);
 
   const now = nowIso();
-  const result = db.prepare(`
+  const result = await db.run(`
     UPDATE seller_orders
-    SET status = ?, reason = COALESCE(?, reason), courier = COALESCE(?, courier),
-        tracking_number = COALESCE(?, tracking_number), updated_at = ?
-    WHERE id = ? AND status = ?`)
-    .run(newStatus, given.reason, given.courier, given.tracking_number, now, order.id, order.status);
+    SET status = ?, reason = COALESCE(?::text, reason), courier = COALESCE(?::text, courier),
+        tracking_number = COALESCE(?::text, tracking_number), updated_at = ?
+    WHERE id = ? AND status = ?`,
+    newStatus, given.reason, given.courier, given.tracking_number, now, order.id, order.status);
   if (result.changes !== 1) throw new HttpError(409, 'This order just changed. Please look again.');
-  db.prepare('INSERT INTO status_log (seller_order_id, status, by_role, at) VALUES (?, ?, ?, ?)')
-    .run(order.id, newStatus, who.role, now);
+  await db.run('INSERT INTO status_log (seller_order_id, status, by_role, at) VALUES (?, ?, ?, ?)',
+    order.id, newStatus, who.role, now);
 
   // A rejected or cancelled part gives its items back to the shop's stock. These statuses are final,
   // so this can only ever happen once for a seller order.
-  if (newStatus === 'rejected' || newStatus === 'cancelled') putStockBack(order.id);
-  return db.prepare('SELECT * FROM seller_orders WHERE id = ?').get(order.id);
-});
+  if (newStatus === 'rejected' || newStatus === 'cancelled') await putStockBack(order.id);
+  return db.get('SELECT * FROM seller_orders WHERE id = ?', order.id);
+}
 
 // A mistake in the code (not in what a person did): stop loudly.
 function checkWho(who) {
@@ -107,9 +112,11 @@ function checkWho(who) {
 
 // Finds the seller order. A customer may only touch a part of their own order (else "does not exist"),
 // and a seller only their own shop's part (else 403).
-function findOrderFor(sellerOrderId, who) {
+async function findOrderFor(sellerOrderId, who) {
   const id = Number(sellerOrderId);
-  const order = Number.isSafeInteger(id) && id > 0 ? db.prepare('SELECT * FROM seller_orders WHERE id = ?').get(id) : null;
+  // ids beyond Postgres's INTEGER range cannot exist (and would be an error there), so they are simply "not found".
+  const order = Number.isSafeInteger(id) && id > 0 && id <= 2147483647
+    ? await db.get('SELECT * FROM seller_orders WHERE id = ?', id) : null;
   if (who.role === 'customer' && (!order || order.customer_order_id !== who.customerOrderId)) {
     throw new HttpError(404, 'That part of the order does not exist.');
   }
@@ -171,11 +178,12 @@ function defaultCancelReason(move, details, who) {
   return who.role === 'customer' ? 'Cancelled by the customer.' : 'Cancelled by the admin.';
 }
 
-// Puts the items of a rejected or cancelled seller order back into the shop's stock.
-function putStockBack(sellerOrderId) {
-  const items = db.prepare('SELECT product_id, quantity FROM order_items WHERE seller_order_id = ?').all(sellerOrderId);
+// Puts the items of a rejected or cancelled seller order back into the shop's stock (in product id order, like checkout,
+// so two transactions never wait for each other's products in a circle).
+async function putStockBack(sellerOrderId) {
+  const items = await db.all('SELECT product_id, quantity FROM order_items WHERE seller_order_id = ? ORDER BY product_id, id', sellerOrderId);
   for (const item of items) {
-    db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(item.quantity, item.product_id);
+    await db.run('UPDATE products SET stock = stock + ? WHERE id = ?', item.quantity, item.product_id);
   }
 }
 

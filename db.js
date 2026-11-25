@@ -1,18 +1,149 @@
-// db.js - the database: creates every table, and fills a brand-new database with sample data.
-// The data file is marketplace.db, or the file named in the DB_FILE environment variable (tests use their own file).
+// db.js - the database: Postgres. Live, the app uses the Supabase database named in the DATABASE_URL environment
+// variable (a secret: it is set in Netlify's settings, never written in code). On a laptop with no DATABASE_URL, the app
+// starts its own small Postgres in the pgdata folder (the embedded-postgres package), so `npm run dev` works offline.
+// Every query waits for the database:  await db.get(sql, ...values)  (one row or undefined),  await db.all(...)
+// (every row),  await db.run(...)  ({ changes, lastInsertRowid }),  await db.tx(async () => { ... })  (one transaction:
+// every query inside it, even in other functions it calls, belongs to it; a thrown error undoes all of it).
+// SQL is written with ? for each value, as before; db.js turns it into Postgres's $1, $2 ...
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const Database = require('better-sqlite3');
+const { AsyncLocalStorage } = require('async_hooks');
+const pg = require('pg');
 const { rupees } = require('./money');
 
-const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'marketplace.db');
-// Product photos sellers upload live in this folder (tests use their own folder).
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
-const db = new Database(DB_FILE);
-db.pragma('journal_mode = WAL');   // safe when several requests read and write at the same time
-db.pragma('foreign_keys = ON');    // an id that points at another table must really exist
-db.pragma('busy_timeout = 5000');  // wait up to 5 seconds if the file is busy
+// Numbers come back as JavaScript numbers (whole paise fit easily), and true/false as 1/0 like the rest of the code.
+pg.types.setTypeParser(20, (value) => Number(value));    // bigint (COUNT, SUM)
+pg.types.setTypeParser(1700, (value) => Number(value));  // numeric (AVG, ROUND)
+pg.types.setTypeParser(16, (value) => (value === 't' ? 1 : 0)); // boolean
+
+const LOCAL_DIR = process.env.DB_DIR || path.join(__dirname, 'pgdata'); // the laptop's own database folder
+const LOCAL_PORT = Number(process.env.DB_PORT) || 54329;
+const LOCAL_URL = `postgres://bazaar:bazaar-local@127.0.0.1:${LOCAL_PORT}/bazaar`;
+const IS_LOCAL = !process.env.DATABASE_URL;
+const DB_LABEL = IS_LOCAL ? `the local database in ${LOCAL_DIR}` : 'the database in DATABASE_URL';
+
+let pool = null;
+const transactionClient = new AsyncLocalStorage(); // the connection of the transaction we are inside, if any
+
+// ---------- Connecting ----------
+
+// Starts the laptop's own Postgres (once), creating its folder and database the first time.
+let localServer = null;
+async function startLocalPostgres() {
+  const EmbeddedPostgres = require('embedded-' + 'postgres').default; // only on a laptop, never in the live function
+  const firstTime = !fs.existsSync(path.join(LOCAL_DIR, 'PG_VERSION'));
+  localServer = new EmbeddedPostgres({
+    databaseDir: LOCAL_DIR, user: 'bazaar', password: 'bazaar-local', port: LOCAL_PORT, persistent: true,
+    initdbFlags: ['--encoding=UTF8', '--locale=C', '--locale-provider=icu', '--icu-locale=und'], onLog: () => {}, onError: () => {},
+  });
+  if (firstTime) await localServer.initialise();
+  await localServer.start();
+  if (firstTime) await localServer.createDatabase('bazaar');
+}
+
+// Stops the laptop's Postgres (tests use this; a running app keeps it until it ends).
+async function close() {
+  if (pool) await pool.end();
+  pool = null;
+  if (localServer) await localServer.stop();
+  localServer = null;
+}
+
+// The pool of connections, made on first use.
+function getPool() {
+  if (!pool) {
+    const url = process.env.DATABASE_URL || LOCAL_URL;
+    const ssl = /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: false };
+    pool = new pg.Pool({ connectionString: url, ssl, max: Number(process.env.DB_POOL_SIZE) || (IS_LOCAL ? 10 : 3) });
+  }
+  return pool;
+}
+
+// ---------- Running SQL ----------
+
+// Tables whose rows have no numeric id (an INSERT into them does not ask for one back).
+const NO_ID = new Set(['settings', 'product_views', 'phone_codes', 'sessions', 'photos']);
+
+// Turns the SQL the app writes into Postgres SQL: ? -> $1 $2 ..., LIKE -> ILIKE (letter case ignored, as before),
+// "x COLLATE NOCASE" -> lower(x), "INSERT OR IGNORE" -> ON CONFLICT DO NOTHING, and an INSERT gets RETURNING id.
+function toPostgres(sql) {
+  let text = sql.replace(/([\w.]+) COLLATE NOCASE/g, 'lower($1)').replace(/\bLIKE\b/g, 'ILIKE');
+  const ignore = /^\s*INSERT OR IGNORE INTO/i.test(text);
+  if (ignore) text = text.replace(/INSERT OR IGNORE INTO/i, 'INSERT INTO') + ' ON CONFLICT DO NOTHING';
+  const insert = /^\s*INSERT INTO\s+(\w+)/i.exec(text);
+  if (insert && !NO_ID.has(insert[1]) && !/\bRETURNING\b/i.test(text)) text += ' RETURNING id';
+  let number = 0;
+  let inQuote = false;
+  let out = '';
+  for (const ch of text) {
+    if (ch === "'") inQuote = !inQuote;
+    out += ch === '?' && !inQuote ? '$' + (number += 1) : ch;
+  }
+  return out;
+}
+
+// Runs one statement on the transaction's connection, or on the pool. Errors get plain codes the routes check.
+async function query(sql, values) {
+  const client = transactionClient.getStore() || getPool();
+  try {
+    return await client.query(toPostgres(sql), values.map((v) => (v === undefined ? null : v)));
+  } catch (err) {
+    if (err.code === '23505') err.code = 'UNIQUE_VIOLATION';
+    else if (err.code === '23514') err.code = 'CHECK_VIOLATION';
+    else if (err.code === '23503') err.code = 'FOREIGN_KEY_VIOLATION';
+    throw err;
+  }
+}
+
+const db = {
+  // The first row, or undefined.
+  async get(sql, ...values) { return (await query(sql, values)).rows[0]; },
+  // Every row.
+  async all(sql, ...values) { return (await query(sql, values)).rows; },
+  // A change: how many rows it touched and, for an INSERT, the new row's id.
+  async run(sql, ...values) {
+    const result = await query(sql, values);
+    return { changes: result.rowCount, lastInsertRowid: result.rows[0] ? result.rows[0].id : undefined, rows: result.rows };
+  },
+  // Several statements with no values (table set-up).
+  async exec(sql) {
+    const client = transactionClient.getStore() || getPool();
+    await client.query(sql);
+  },
+  // One transaction. Inside another transaction it becomes a savepoint, so the outer one still decides.
+  async tx(work) {
+    const outer = transactionClient.getStore();
+    if (outer) {
+      const name = 'sp_' + crypto.randomBytes(4).toString('hex');
+      await outer.query(`SAVEPOINT ${name}`);
+      try {
+        const result = await work();
+        await outer.query(`RELEASE SAVEPOINT ${name}`);
+        return result;
+      } catch (err) {
+        await outer.query(`ROLLBACK TO SAVEPOINT ${name}`);
+        throw err;
+      }
+    }
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const result = await transactionClient.run(client, work);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+  // Inside a transaction: waits for, then holds until the end, a lock on one named thing (for example one shop's payouts).
+  async lock(name, id = 0) {
+    await query('SELECT pg_advisory_xact_lock(hashtext(?), ?)', [name, id]);
+  },
+};
 
 // The time right now as text the database can sort and compare (UTC, ISO format).
 function nowIso() {
@@ -20,19 +151,17 @@ function nowIso() {
 }
 
 // The form of a name that search compares: small letters in every alphabet, so CRÈME finds Crème.
-// (SQLite's own LIKE only ignores the case of A to Z.)
 function searchForm(text) {
   return String(text).normalize('NFC').toLowerCase();
 }
 
-// SQL can call search_text(name) to get the same form, for example: WHERE search_text(products.name) LIKE ?
-db.function('search_text', { deterministic: true }, (text) => (text === null ? null : searchForm(text)));
+// ---------- The tables ----------
 
-// Creates every table from CLAUDE.md, if they do not exist yet. All money columns are whole paise.
-function createTables() {
-  db.exec(`
+// Every table from CLAUDE.md (created only if missing). All money columns are whole paise. Photos are kept in the
+// photos table, so the live site needs no file storage.
+const SCHEMA_SQL = `
     CREATE TABLE IF NOT EXISTS sellers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       shop_name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
       description TEXT NOT NULL DEFAULT '',
@@ -46,7 +175,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('admin', 'seller')),
@@ -64,7 +193,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS categories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       commission_bps INTEGER CHECK (commission_bps IS NULL OR commission_bps BETWEEN 0 AND 10000)
     );
@@ -75,12 +204,12 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       seller_id INTEGER NOT NULL REFERENCES sellers(id),
       category_id INTEGER NOT NULL REFERENCES categories(id),
       name TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
-      emoji TEXT NOT NULL DEFAULT '📦',
+      emoji TEXT NOT NULL DEFAULT '',
       price INTEGER NOT NULL CHECK (price > 0),
       stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
       low_stock_level INTEGER NOT NULL DEFAULT 0 CHECK (low_stock_level >= 0),
@@ -92,7 +221,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS customer_orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
       tracking_token TEXT NOT NULL UNIQUE,
       customer_name TEXT NOT NULL,
@@ -107,7 +236,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS seller_orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       customer_order_id INTEGER NOT NULL REFERENCES customer_orders(id),
       seller_id INTEGER NOT NULL REFERENCES sellers(id),
       status TEXT NOT NULL CHECK (status IN ('pending_payment', 'placed', 'accepted', 'packed', 'shipped', 'delivered', 'rejected', 'cancelled')),
@@ -124,7 +253,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS order_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       seller_order_id INTEGER NOT NULL REFERENCES seller_orders(id),
       product_id INTEGER NOT NULL REFERENCES products(id),
       name TEXT NOT NULL,
@@ -134,7 +263,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS status_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       seller_order_id INTEGER NOT NULL REFERENCES seller_orders(id),
       status TEXT NOT NULL CHECK (status IN ('pending_payment', 'placed', 'accepted', 'packed', 'shipped', 'delivered', 'rejected', 'cancelled')),
       by_role TEXT NOT NULL CHECK (by_role IN ('system', 'customer', 'seller', 'admin')),
@@ -142,7 +271,7 @@ function createTables() {
     );
 
     CREATE TABLE IF NOT EXISTS payments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       customer_order_id INTEGER NOT NULL REFERENCES customer_orders(id),
       provider TEXT NOT NULL CHECK (provider IN ('fake', 'razorpay')),
       provider_ref TEXT,
@@ -153,7 +282,7 @@ function createTables() {
 
     -- seller_order_id is UNIQUE: a seller order can be refunded only once, even if two requests arrive together.
     CREATE TABLE IF NOT EXISTS refunds (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       payment_id INTEGER NOT NULL REFERENCES payments(id),
       seller_order_id INTEGER NOT NULL UNIQUE REFERENCES seller_orders(id),
       amount INTEGER NOT NULL CHECK (amount > 0),
@@ -163,7 +292,7 @@ function createTables() {
 
     -- amount is + when the platform owes the seller, - when the seller owes or was paid.
     CREATE TABLE IF NOT EXISTS ledger (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       seller_id INTEGER NOT NULL REFERENCES sellers(id),
       seller_order_id INTEGER REFERENCES seller_orders(id),
       type TEXT NOT NULL CHECK (type IN ('earning', 'commission_owed', 'payout')),
@@ -174,7 +303,7 @@ function createTables() {
 
     -- Sector 6: verified reviews. order_item_id is UNIQUE: one review per product per order.
     CREATE TABLE IF NOT EXISTS reviews (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       order_item_id INTEGER NOT NULL UNIQUE REFERENCES order_items(id),
       product_id INTEGER NOT NULL REFERENCES products(id),
       seller_id INTEGER NOT NULL REFERENCES sellers(id),
@@ -187,7 +316,7 @@ function createTables() {
 
     -- Sector 5: "Help with this order". Only one open request per seller order (the index below).
     CREATE TABLE IF NOT EXISTS help_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       seller_order_id INTEGER NOT NULL REFERENCES seller_orders(id),
       message TEXT NOT NULL,
       seller_reply TEXT,
@@ -200,7 +329,7 @@ function createTables() {
 
     -- Sector 6: "Report this listing".
     CREATE TABLE IF NOT EXISTS reports (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       product_id INTEGER NOT NULL REFERENCES products(id),
       reason TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'hidden', 'dismissed')),
@@ -209,7 +338,7 @@ function createTables() {
 
     -- Sector 9: the contact form and the newsletter.
     CREATE TABLE IF NOT EXISTS contact_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL,
       message TEXT NOT NULL,
@@ -217,7 +346,7 @@ function createTables() {
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS newsletter (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       consent_at TEXT NOT NULL,
       unsubscribe_token TEXT NOT NULL UNIQUE
@@ -225,7 +354,7 @@ function createTables() {
 
     -- The outbox: every email the app "sends" (mail.js). Nothing is really sent.
     CREATE TABLE IF NOT EXISTS emails (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       to_address TEXT NOT NULL,
       subject TEXT NOT NULL,
       body TEXT NOT NULL,
@@ -254,7 +383,7 @@ function createTables() {
     -- Seasons (festival looks): the store dresses up between starts_at and ends_at (local time, 'YYYY-MM-DD HH:MM')
     -- while enabled. Nothing about prices, stock or orders depends on a season, apart from the optional gift wrap.
     CREATE TABLE IF NOT EXISTS seasons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       key TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       starts_at TEXT NOT NULL,
@@ -264,7 +393,7 @@ function createTables() {
 
     -- The home page's promo cards (the admin switches each on or off and changes its words, photo and link).
     CREATE TABLE IF NOT EXISTS promo_cards (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       position INTEGER NOT NULL DEFAULT 0,
       title TEXT NOT NULL,
       line TEXT NOT NULL DEFAULT '',
@@ -287,65 +416,54 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS status_log_by_seller_order ON status_log(seller_order_id);
     CREATE INDEX IF NOT EXISTS payments_by_customer_order ON payments(customer_order_id);
     CREATE INDEX IF NOT EXISTS ledger_by_seller ON ledger(seller_id);
-  `);
+  
+    CREATE TABLE IF NOT EXISTS photos (
+      name TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      bytes BYTEA NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- search_text(name): the form of a name that search compares (small letters in every alphabet).
+    CREATE OR REPLACE FUNCTION search_text(value TEXT) RETURNS TEXT LANGUAGE sql IMMUTABLE AS $$ SELECT lower(normalize(value, NFC)) $$;
+`;
+
+// Creates every table that is missing, then adds any column a newer version needs.
+async function createTables() {
+  await db.exec(SCHEMA_SQL);
+  await addMissingColumns();
+  await lockTablesFromTheWebApi();
 }
 
-// Sector 2 added two columns to products, so the admin can hide a product that breaks the rules:
-// hidden (0 or 1) and hidden_reason. An older database gets them here; every row and value is kept.
-function addMissingColumns() {
-  const productColumns = db.prepare('PRAGMA table_info(products)').all().map((column) => column.name);
-  if (!productColumns.includes('hidden')) {
-    db.exec('ALTER TABLE products ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1))');
-  }
-  if (!productColumns.includes('hidden_reason')) {
-    db.exec('ALTER TABLE products ADD COLUMN hidden_reason TEXT');
-  }
-  if (!productColumns.includes('photo')) {
-    db.exec('ALTER TABLE products ADD COLUMN photo TEXT'); // the photo's file name in the uploads folder, or empty
-  }
-  // Seasons: giftable products, each shop's gift-wrap price (0 = not offered), and the gift wrap and message copied
-  // into each order. Sample products that make good gifts are tagged once, when the column is first added.
-  const giftColumns = {
-    products: { giftable: 'INTEGER NOT NULL DEFAULT 0 CHECK (giftable IN (0, 1))' },
-    sellers: { gift_wrap_price: 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap_price >= 0)' },
-    seller_orders: { gift_wrap: 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap >= 0)', gift_message: 'TEXT' },
-    customer_orders: { gift_wrap_total: 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap_total >= 0)' },
-  };
-  for (const [table, columns] of Object.entries(giftColumns)) {
-    const have = db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
-    for (const [name, definition] of Object.entries(columns)) {
-      if (have.includes(name)) continue;
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
-      if (table === 'products' && name === 'giftable') tagSampleGifts();
-      if (table === 'sellers' && name === 'gift_wrap_price') addSampleGiftWrap();
-    }
-  }
-  // The home page rebuild: a size or weight for each product ("250 g", "Set of 4"), and a photo for category tiles.
-  const productHas = db.prepare('PRAGMA table_info(products)').all().map((column) => column.name);
-  if (!productHas.includes('size_label')) {
-    db.exec("ALTER TABLE products ADD COLUMN size_label TEXT NOT NULL DEFAULT ''");
-    addSampleSizes();
-  }
-  const categoryHas = db.prepare('PRAGMA table_info(categories)').all().map((column) => column.name);
-  if (!categoryHas.includes('photo')) db.exec('ALTER TABLE categories ADD COLUMN photo TEXT');
-  // Sector 4: the provider's id of the payment itself (Razorpay refunds need it).
-  const paymentColumns = db.prepare('PRAGMA table_info(payments)').all().map((column) => column.name);
-  if (!paymentColumns.includes('paid_ref')) db.exec('ALTER TABLE payments ADD COLUMN paid_ref TEXT');
-  // The prompt pack's notebook upgrade (2a): each shop's city, dispatch days, return window, approval date and early bird.
-  const sellerColumns = db.prepare('PRAGMA table_info(sellers)').all().map((column) => column.name);
-  const newSellerColumns = {
-    city: "TEXT NOT NULL DEFAULT ''",
-    dispatch_days: 'INTEGER NOT NULL DEFAULT 2 CHECK (dispatch_days BETWEEN 1 AND 7)',
-    return_days: 'INTEGER NOT NULL DEFAULT 7 CHECK (return_days IN (0, 7, 10, 15, 30))',
-    approved_at: 'TEXT',
-    early_bird: 'INTEGER NOT NULL DEFAULT 0 CHECK (early_bird IN (0, 1))',
-  };
-  for (const [name, definition] of Object.entries(newSellerColumns)) {
-    if (!sellerColumns.includes(name)) db.exec(`ALTER TABLE sellers ADD COLUMN ${name} ${definition}`);
-  }
-  // Shops approved before approved_at existed count as approved when they joined (done once, when the column is added).
-  if (!sellerColumns.includes('approved_at')) {
-    db.exec("UPDATE sellers SET approved_at = created_at WHERE status IN ('active', 'suspended')");
+// Supabase also offers every table through its own web API. Row-level security with no rules closes that door: only
+// this app (which owns the tables and connects with DATABASE_URL) can read or change the data.
+async function lockTablesFromTheWebApi() {
+  const tables = await db.all("SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND NOT rowsecurity");
+  for (const { tablename } of tables) await db.exec(`ALTER TABLE ${tablename} ENABLE ROW LEVEL SECURITY`);
+}
+
+// Columns added after the first tables (each is added only when missing; rows and values are kept).
+const ADDED_COLUMNS = [
+  ['products', 'hidden', 'INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1))'],
+  ['products', 'hidden_reason', 'TEXT'],
+  ['products', 'photo', 'TEXT'],
+  ['products', 'giftable', 'INTEGER NOT NULL DEFAULT 0 CHECK (giftable IN (0, 1))'],
+  ['products', 'size_label', "TEXT NOT NULL DEFAULT ''"],
+  ['sellers', 'gift_wrap_price', 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap_price >= 0)'],
+  ['sellers', 'city', "TEXT NOT NULL DEFAULT ''"],
+  ['sellers', 'dispatch_days', 'INTEGER NOT NULL DEFAULT 2 CHECK (dispatch_days BETWEEN 1 AND 7)'],
+  ['sellers', 'return_days', 'INTEGER NOT NULL DEFAULT 7 CHECK (return_days IN (0, 7, 10, 15, 30))'],
+  ['sellers', 'approved_at', 'TEXT'],
+  ['sellers', 'early_bird', 'INTEGER NOT NULL DEFAULT 0 CHECK (early_bird IN (0, 1))'],
+  ['seller_orders', 'gift_wrap', 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap >= 0)'],
+  ['seller_orders', 'gift_message', 'TEXT'],
+  ['customer_orders', 'gift_wrap_total', 'INTEGER NOT NULL DEFAULT 0 CHECK (gift_wrap_total >= 0)'],
+  ['categories', 'photo', 'TEXT'],
+  ['payments', 'paid_ref', 'TEXT'],
+];
+async function addMissingColumns() {
+  for (const [table, column, definition] of ADDED_COLUMNS) {
+    await db.exec(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
   }
 }
 
@@ -353,14 +471,6 @@ function addMissingColumns() {
 const SAMPLE_GIFTS = ['Chilli Pickle Gift Box', 'Red Chilli Garlic Chutney', 'Chilli Masala Spice Mix', 'Hanging Clay Lamp',
   'Clay Diya Set (12)', 'Clay Tea Cups (set of 4)', 'Clay Planter', 'Cotton Stole', 'Cotton Tote Bag', 'Hand-woven Scarf'];
 const SAMPLE_GIFT_WRAP = { 'Chilli Lane Pantry': 3000, 'Terracotta Corner': 5000, 'Handloom Nook': 4000 };
-function tagSampleGifts() {
-  const tag = db.prepare('UPDATE products SET giftable = 1 WHERE name = ?');
-  for (const name of SAMPLE_GIFTS) tag.run(name);
-}
-function addSampleGiftWrap() {
-  const set = db.prepare('UPDATE sellers SET gift_wrap_price = ? WHERE shop_name = ?');
-  for (const [shop, paise] of Object.entries(SAMPLE_GIFT_WRAP)) set.run(paise, shop);
-}
 
 // The sizes of the 18 first sample products (filled in once, when the size column is added).
 const SAMPLE_SIZES = {
@@ -370,10 +480,6 @@ const SAMPLE_SIZES = {
   'Cotton Stole': '2 m', 'Handloom Bath Towel': '140 x 70 cm', 'Cotton Tote Bag': '1 bag', 'Hand-woven Scarf': '1.8 m',
   'Cotton Kitchen Towels (set of 3)': 'Set of 3', 'Woollen Shawl': '2 m',
 };
-function addSampleSizes() {
-  const set = db.prepare("UPDATE products SET size_label = ? WHERE name = ? AND size_label = ''");
-  for (const [name, size] of Object.entries(SAMPLE_SIZES)) set.run(size, name);
-}
 
 // More categories for the home page's category grid, each with its rate, and sample products from the sample shops so
 // none is empty. Added once: a category that already exists is left alone (and so are its products).
@@ -421,29 +527,6 @@ const MORE_PRODUCTS = [
   ['Handloom Nook', 'Stationery and prints', 'Handmade Paper Cards', 190, 25, 5, 'Set of 6', 'Cards and envelopes made from cotton rag paper.', 1],
   ['Handloom Nook', 'Cleaning essentials', 'Cotton Cleaning Cloths', 160, 30, 6, 'Set of 6', 'Thick cloths that wash well again and again.', 0],
 ];
-function addMoreCategories() {
-  const added = [];
-  for (const [name, rate] of MORE_CATEGORIES) {
-    if (db.prepare('SELECT 1 FROM categories WHERE name = ?').get(name)) continue;
-    db.prepare('INSERT INTO categories (name, commission_bps) VALUES (?, ?)').run(name, rate);
-    added.push(name);
-  }
-  return added;
-}
-// Adds the sample products of these categories (only for sample shops that exist, and never a product twice).
-function addMoreSampleProducts(categoryNames) {
-  const insert = db.prepare(`
-    INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted,
-                          created_at, giftable, size_label)
-    VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 0, ?, ?, ?)`);
-  for (const [shop, category, name, price, stock, low, size, description, giftable] of MORE_PRODUCTS) {
-    if (!categoryNames.includes(category)) continue;
-    const seller = db.prepare('SELECT id FROM sellers WHERE shop_name = ?').get(shop);
-    const categoryRow = db.prepare('SELECT id FROM categories WHERE name = ?').get(category);
-    if (!seller || !categoryRow || db.prepare('SELECT 1 FROM products WHERE name = ? AND seller_id = ?').get(name, seller.id)) continue;
-    insert.run(seller.id, categoryRow.id, name, description, rupees(price), stock, low, nowIso(), giftable, size);
-  }
-}
 
 // The home page's promo cards, added once (when there are none): each links to a real category or collection page.
 const SAMPLE_PROMO_CARDS = [
@@ -454,28 +537,6 @@ const SAMPLE_PROMO_CARDS = [
   ['No time to shop for the baby?', 'Baby essentials, delivered', '/category/baby-care', 'success'],
   ['Get prints and stationery delivered', 'Notebooks and cards on handmade paper', '/category/stationery-and-prints', 'accent'],
 ];
-function addSamplePromoCards() {
-  if (db.prepare('SELECT COUNT(*) AS n FROM promo_cards').get().n > 0) return;
-  const insert = db.prepare('INSERT INTO promo_cards (position, title, line, link, tone, enabled) VALUES (?, ?, ?, ?, ?, 1)');
-  SAMPLE_PROMO_CARDS.forEach(([title, line, link, tone], index) => insert.run(index + 1, title, line, link, tone));
-}
-
-// The seasons, added once when missing: Christmas, 1 to 26 December (until 23:59) of this year.
-function addDefaultSeasons() {
-  const year = new Date().getFullYear();
-  db.prepare("INSERT OR IGNORE INTO seasons (key, name, starts_at, ends_at, enabled) VALUES ('christmas', 'Christmas', ?, ?, 1)")
-    .run(`${year}-12-01 00:00`, `${year}-12-26 23:59`);
-}
-
-// Settings the app needs. Added only when missing, so a change the admin makes is never overwritten.
-function addDefaultSettings() {
-  const add = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
-  add.run('default_commission_bps', '1000'); // 10%
-  add.run('cod_enabled', '1');               // cash on delivery is switched on
-  add.run('early_bird_slots', '0');          // the early-bird offer is off until the admin sets it
-  add.run('early_bird_bps', '500');          // 5%
-  add.run('early_bird_days', '90');
-}
 
 // The sample shops' city, dispatch days and return window (only filled in while a sample shop has no city yet).
 const SAMPLE_SHOP_DETAILS = {
@@ -484,48 +545,6 @@ const SAMPLE_SHOP_DETAILS = {
   'Handloom Nook': { city: 'Kannur', dispatch_days: 2, return_days: 15 },
   'Brass Bell Crafts': { city: 'Moradabad', dispatch_days: 3, return_days: 0 },
 };
-function addSampleShopDetails() {
-  const update = db.prepare("UPDATE sellers SET city = ?, dispatch_days = ?, return_days = ? WHERE shop_name = ? AND city = ''");
-  for (const [shopName, details] of Object.entries(SAMPLE_SHOP_DETAILS)) {
-    update.run(details.city, details.dispatch_days, details.return_days, shopName);
-  }
-}
-
-// The sample photos (free Unsplash photos, see CREDITS.md) live in the sample-photos folder, named after what they
-// show: category-<name>.jpg, promo-<title>.jpg, product-<name>.jpg. A category, promo card or product that has NO photo
-// yet and has a matching file gets a copy of it in the uploads folder under a new random name. A photo someone already
-// uploaded is never replaced, so this only fills gaps (for example in a friend's brand-new database).
-const SAMPLE_PHOTOS_DIR = path.join(__dirname, 'sample-photos');
-const photoSlug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-function addSamplePhotos() {
-  if (!fs.existsSync(SAMPLE_PHOTOS_DIR)) return;
-  const files = new Set(fs.readdirSync(SAMPLE_PHOTOS_DIR));
-  const targets = [
-    ['category', 'categories', 'name'], ['promo', 'promo_cards', 'title'], ['product', 'products', 'name'],
-  ];
-  for (const [kind, table, nameColumn] of targets) {
-    const rows = db.prepare(`SELECT id, ${nameColumn} AS name FROM ${table} WHERE photo IS NULL OR photo = ''`).all();
-    for (const row of rows) {
-      const file = `${kind}-${photoSlug(row.name)}.jpg`;
-      if (!files.has(file)) continue;
-      const newName = crypto.randomBytes(16).toString('hex') + '.jpg';
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-      fs.copyFileSync(path.join(SAMPLE_PHOTOS_DIR, file), path.join(UPLOADS_DIR, newName), fs.constants.COPYFILE_EXCL);
-      db.prepare(`UPDATE ${table} SET photo = ? WHERE id = ?`).run(newName, row.id);
-    }
-  }
-}
-
-createTables();
-addMissingColumns();
-addDefaultSettings();
-addDefaultSeasons();
-addMoreSampleProducts(addMoreCategories());
-addSamplePromoCards();
-addSampleShopDetails();
-addSamplePhotos();
-
-// ---------- Sample data (only for a brand-new, empty database) ----------
 
 const ADMIN_PASSWORD_MIN = 12; // an admin password must be at least 12 characters
 
@@ -575,106 +594,245 @@ const SAMPLE_SHOPS = [
 // Switched off on purpose: Woollen Shawl.
 const SAMPLE_PRODUCTS = {
   'Chilli Lane Pantry': [
-    { name: 'Green Chilli Pickle', category: 'Food and spices', price: 180, stock: 3, low: 5, emoji: '🌶️', description: 'Whole green chillies in mustard oil with lemon and spices. 300 g jar.' },
-    { name: 'Red Chilli Garlic Chutney', category: 'Food and spices', price: 150, stock: 25, low: 5, emoji: '🧄', description: 'A hot, garlicky chutney for snacks and sandwiches. 200 g jar.' },
-    { name: 'Hot Chilli Sauce', category: 'Food and spices', price: 220, stock: 18, low: 5, emoji: '🔥', description: 'Fiery red chilli sauce with a little vinegar. 250 ml bottle.' },
-    { name: 'Smoky Chilli Oil', category: 'Food and spices', price: 260, stock: 12, low: 4, emoji: '🫙', description: 'Dried red chillies and garlic in hot oil. Great on noodles. 200 ml.' },
-    { name: 'Chilli Masala Spice Mix', category: 'Food and spices', price: 120, stock: 40, low: 10, emoji: '🥄', description: 'Our everyday blend of red chilli, coriander and cumin. 100 g pack.' },
-    { name: 'Chilli Pickle Gift Box', category: 'Gifts and crafts', price: 599, stock: 0, low: 2, emoji: '🎁', description: 'Three small jars of our best pickles in a gift box.' },
+    { name: 'Green Chilli Pickle', category: 'Food and spices', price: 180, stock: 3, low: 5, description: 'Whole green chillies in mustard oil with lemon and spices. 300 g jar.' },
+    { name: 'Red Chilli Garlic Chutney', category: 'Food and spices', price: 150, stock: 25, low: 5, description: 'A hot, garlicky chutney for snacks and sandwiches. 200 g jar.' },
+    { name: 'Hot Chilli Sauce', category: 'Food and spices', price: 220, stock: 18, low: 5, description: 'Fiery red chilli sauce with a little vinegar. 250 ml bottle.' },
+    { name: 'Smoky Chilli Oil', category: 'Food and spices', price: 260, stock: 12, low: 4, description: 'Dried red chillies and garlic in hot oil. Great on noodles. 200 ml.' },
+    { name: 'Chilli Masala Spice Mix', category: 'Food and spices', price: 120, stock: 40, low: 10, description: 'Our everyday blend of red chilli, coriander and cumin. 100 g pack.' },
+    { name: 'Chilli Pickle Gift Box', category: 'Gifts and crafts', price: 599, stock: 0, low: 2, description: 'Three small jars of our best pickles in a gift box.' },
   ],
   'Terracotta Corner': [
-    { name: 'Clay Water Bottle', category: 'Home and kitchen', price: 450, stock: 10, low: 3, emoji: '🏺', description: 'Keeps water cool the natural way. 1 litre.' },
-    { name: 'Terracotta Cooking Pot', category: 'Home and kitchen', price: 650, stock: 2, low: 3, emoji: '🍲', description: 'A deep clay pot for slow-cooked curries and dal. 2 litres.' },
-    { name: 'Clay Tea Cups (set of 4)', category: 'Home and kitchen', price: 380, stock: 20, low: 5, emoji: '☕', description: 'Small hand-made cups for hot chai.' },
-    { name: 'Hanging Clay Lamp', category: 'Gifts and crafts', price: 520, stock: 8, low: 2, emoji: '🏮', description: 'A painted clay lamp with a hook for hanging.' },
-    { name: 'Clay Planter', category: 'Home and kitchen', price: 300, stock: 15, low: 4, emoji: '🪴', description: 'A round planter with a drainage hole. 15 cm wide.' },
-    { name: 'Clay Diya Set (12)', category: 'Gifts and crafts', price: 240, stock: 30, low: 10, emoji: '🪔', description: 'Twelve hand-shaped oil lamps for festivals.' },
+    { name: 'Clay Water Bottle', category: 'Home and kitchen', price: 450, stock: 10, low: 3, description: 'Keeps water cool the natural way. 1 litre.' },
+    { name: 'Terracotta Cooking Pot', category: 'Home and kitchen', price: 650, stock: 2, low: 3, description: 'A deep clay pot for slow-cooked curries and dal. 2 litres.' },
+    { name: 'Clay Tea Cups (set of 4)', category: 'Home and kitchen', price: 380, stock: 20, low: 5, description: 'Small hand-made cups for hot chai.' },
+    { name: 'Hanging Clay Lamp', category: 'Gifts and crafts', price: 520, stock: 8, low: 2, description: 'A painted clay lamp with a hook for hanging.' },
+    { name: 'Clay Planter', category: 'Home and kitchen', price: 300, stock: 15, low: 4, description: 'A round planter with a drainage hole. 15 cm wide.' },
+    { name: 'Clay Diya Set (12)', category: 'Gifts and crafts', price: 240, stock: 30, low: 10, description: 'Twelve hand-shaped oil lamps for festivals.' },
   ],
   'Handloom Nook': [
-    { name: 'Cotton Stole', category: 'Clothing', price: 550, stock: 14, low: 4, emoji: '🧣', description: 'A light hand-woven cotton stole in indigo stripes.' },
-    { name: 'Handloom Bath Towel', category: 'Home and kitchen', price: 420, stock: 20, low: 5, emoji: '🛁', description: 'Soft, quick-drying cotton bath towel.' },
-    { name: 'Cotton Tote Bag', category: 'Gifts and crafts', price: 280, stock: 25, low: 5, emoji: '👜', description: 'A strong tote bag woven from thick cotton.' },
-    { name: 'Hand-woven Scarf', category: 'Clothing', price: 480, stock: 9, low: 3, emoji: '🧶', description: 'A warm cotton scarf with tassels.' },
-    { name: 'Cotton Kitchen Towels (set of 3)', category: 'Home and kitchen', price: 250, stock: 30, low: 6, emoji: '🧺', description: 'Checked kitchen towels that soak up well.' },
-    { name: 'Woollen Shawl', category: 'Clothing', price: 1200, stock: 6, low: 2, emoji: '🧥', description: 'A thick woollen shawl for cold evenings.', switchedOff: true },
+    { name: 'Cotton Stole', category: 'Clothing', price: 550, stock: 14, low: 4, description: 'A light hand-woven cotton stole in indigo stripes.' },
+    { name: 'Handloom Bath Towel', category: 'Home and kitchen', price: 420, stock: 20, low: 5, description: 'Soft, quick-drying cotton bath towel.' },
+    { name: 'Cotton Tote Bag', category: 'Gifts and crafts', price: 280, stock: 25, low: 5, description: 'A strong tote bag woven from thick cotton.' },
+    { name: 'Hand-woven Scarf', category: 'Clothing', price: 480, stock: 9, low: 3, description: 'A warm cotton scarf with tassels.' },
+    { name: 'Cotton Kitchen Towels (set of 3)', category: 'Home and kitchen', price: 250, stock: 30, low: 6, description: 'Checked kitchen towels that soak up well.' },
+    { name: 'Woollen Shawl', category: 'Clothing', price: 1200, stock: 6, low: 2, description: 'A thick woollen shawl for cold evenings.', switchedOff: true },
   ],
 };
 
-// Fills the database with the sample data, but only when it has no users yet (a brand-new database).
-// Returns true when it added the data. server.js calls this once at start-up.
-function fillSampleDataIfEmpty() {
-  const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
-  if (userCount > 0) return false;
 
-  // Loaded here, not at the top, because auth.js also loads db.js.
-  const { hashPassword } = require('./auth');
-  const addEverything = db.transaction(() => {
-    const categoryIds = addSampleCategories();
-    const shopIds = addSampleShops();
-    addDemoLogins(shopIds, hashPassword);
-    addSampleProducts(shopIds, categoryIds);
+// ---------- Filling in the sample data ----------
+
+// Tags the sample gift products and sets the sample shops' gift-wrap prices (only where not set yet).
+async function tagSampleGifts() {
+  for (const name of SAMPLE_GIFTS) await db.run('UPDATE products SET giftable = 1 WHERE name = ?', name);
+}
+async function addSampleGiftWrap() {
+  for (const [shop, paise] of Object.entries(SAMPLE_GIFT_WRAP)) {
+    await db.run('UPDATE sellers SET gift_wrap_price = ? WHERE shop_name = ? AND gift_wrap_price = 0', paise, shop);
+  }
+}
+async function addSampleSizes() {
+  for (const [name, size] of Object.entries(SAMPLE_SIZES)) {
+    await db.run("UPDATE products SET size_label = ? WHERE name = ? AND size_label = ''", size, name);
+  }
+}
+
+// Adds the extra categories that are missing. Returns the names it added.
+async function addMoreCategories() {
+  const added = [];
+  for (const [name, rate] of MORE_CATEGORIES) {
+    if (await db.get('SELECT 1 FROM categories WHERE name = ?', name)) continue;
+    await db.run('INSERT INTO categories (name, commission_bps) VALUES (?, ?)', name, rate);
+    added.push(name);
+  }
+  return added;
+}
+
+// Adds the sample products of these categories (only for sample shops that exist, and never a product twice).
+async function addMoreSampleProducts(categoryNames) {
+  for (const [shop, category, name, price, stock, low, size, description, giftable] of MORE_PRODUCTS) {
+    if (!categoryNames.includes(category)) continue;
+    const seller = await db.get('SELECT id FROM sellers WHERE shop_name = ?', shop);
+    const categoryRow = await db.get('SELECT id FROM categories WHERE name = ?', category);
+    if (!seller || !categoryRow || await db.get('SELECT 1 FROM products WHERE name = ? AND seller_id = ?', name, seller.id)) continue;
+    await db.run(`
+      INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted,
+                            created_at, giftable, size_label)
+      VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 0, ?, ?, ?)`,
+    seller.id, categoryRow.id, name, description, rupees(price), stock, low, nowIso(), giftable, size);
+  }
+}
+
+// The promo cards, added once (when there are none).
+async function addSamplePromoCards() {
+  if ((await db.get('SELECT COUNT(*) AS n FROM promo_cards')).n > 0) return;
+  let position = 0;
+  for (const [title, line, link, tone] of SAMPLE_PROMO_CARDS) {
+    position += 1;
+    await db.run('INSERT INTO promo_cards (position, title, line, link, tone, enabled) VALUES (?, ?, ?, ?, ?, 1)', position, title, line, link, tone);
+  }
+}
+
+// The seasons, added once when missing: Christmas, 1 to 26 December (until 23:59) of this year.
+async function addDefaultSeasons() {
+  const year = new Date().getFullYear();
+  await db.run("INSERT OR IGNORE INTO seasons (key, name, starts_at, ends_at, enabled) VALUES ('christmas', 'Christmas', ?, ?, 1)",
+    `${year}-12-01 00:00`, `${year}-12-26 23:59`);
+}
+
+// Settings the app needs. Added only when missing, so a change the admin makes is never overwritten.
+async function addDefaultSettings() {
+  const defaults = [['default_commission_bps', '1000'], ['cod_enabled', '1'], ['early_bird_slots', '0'], ['early_bird_bps', '500'], ['early_bird_days', '90']];
+  for (const [key, value] of defaults) await db.run('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', key, value);
+}
+
+// The sample shops' city, dispatch days and return window (only while a sample shop has no city yet).
+async function addSampleShopDetails() {
+  for (const [shopName, details] of Object.entries(SAMPLE_SHOP_DETAILS)) {
+    await db.run("UPDATE sellers SET city = ?, dispatch_days = ?, return_days = ? WHERE shop_name = ? AND city = ''",
+      details.city, details.dispatch_days, details.return_days, shopName);
+  }
+}
+
+// ---------- Photos (kept in the database) ----------
+
+// Saves a photo's bytes under a name. Never overwrites (the name is new and random).
+async function savePhotoBytes(name, type, bytes) {
+  await db.run('INSERT INTO photos (name, type, bytes, created_at) VALUES (?, ?, ?, ?)', name, type, bytes, nowIso());
+}
+// A saved photo ({ type, bytes }), or undefined.
+async function loadPhoto(name) {
+  return db.get('SELECT type, bytes FROM photos WHERE name = ?', name);
+}
+// Deletes a saved photo (only names this app made itself).
+async function deletePhoto(name) {
+  if (name && /^[a-f0-9]{32}\.(jpg|png|webp)$/.test(name)) await db.run('DELETE FROM photos WHERE name = ?', name);
+}
+
+// The sample photos (free Unsplash photos, see CREDITS.md) live in the sample-photos folder, named after what they
+// show: category-<name>.jpg, promo-<title>.jpg, product-<name>.jpg. A category, promo card or product that has NO photo
+// yet and has a matching file gets a copy of it under a new random name. A photo someone uploaded is never replaced.
+const SAMPLE_PHOTOS_DIR = path.join(__dirname, 'sample-photos');
+const photoSlug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+async function addSamplePhotos() {
+  if (!fs.existsSync(SAMPLE_PHOTOS_DIR)) return;
+  const files = new Set(fs.readdirSync(SAMPLE_PHOTOS_DIR));
+  const targets = [['category', 'categories', 'name'], ['promo', 'promo_cards', 'title'], ['product', 'products', 'name']];
+  for (const [kind, table, nameColumn] of targets) {
+    const rows = await db.all(`SELECT id, ${nameColumn} AS name FROM ${table} WHERE photo IS NULL OR photo = ''`);
+    for (const row of rows) {
+      const file = `${kind}-${photoSlug(row.name)}.jpg`;
+      if (!files.has(file)) continue;
+      const newName = crypto.randomBytes(16).toString('hex') + '.jpg';
+      await savePhotoBytes(newName, 'image/jpeg', fs.readFileSync(path.join(SAMPLE_PHOTOS_DIR, file)));
+      await db.run(`UPDATE ${table} SET photo = ? WHERE id = ?`, newName, row.id);
+    }
+  }
+}
+
+// Fills the database with the sample data, but only when it has no users yet (a brand-new database).
+// Returns true when it added the data.
+async function fillSampleDataIfEmpty() {
+  if ((await db.get('SELECT COUNT(*) AS n FROM users')).n > 0) return false;
+  const { hashPassword } = require('./auth'); // loaded here, not at the top, because auth.js also loads db.js
+  await db.tx(async () => {
+    const categoryIds = await addSampleCategories();
+    const shopIds = await addSampleShops();
+    await addDemoLogins(shopIds, hashPassword);
+    await addSampleProducts(shopIds, categoryIds);
   });
-  addEverything();
-  addSampleShopDetails();
-  tagSampleGifts();
-  addSampleGiftWrap();
-  addSampleSizes();
-  addMoreSampleProducts(MORE_CATEGORIES.map(([name]) => name));
-  db.exec("UPDATE sellers SET approved_at = created_at WHERE approved_at IS NULL AND status = 'active'");
-  addSamplePhotos();
+  await addSampleShopDetails();
+  await tagSampleGifts();
+  await addSampleGiftWrap();
+  await addSampleSizes();
+  await addMoreSampleProducts(MORE_CATEGORIES.map(([name]) => name));
+  await db.run("UPDATE sellers SET approved_at = created_at WHERE approved_at IS NULL AND status = 'active'");
+  await addSamplePhotos();
   return true;
 }
 
 // Adds the 4 categories. Returns { 'Food and spices': id, ... }.
-function addSampleCategories() {
+async function addSampleCategories() {
   const ids = {};
   for (const category of SAMPLE_CATEGORIES) {
-    db.prepare('INSERT OR IGNORE INTO categories (name, commission_bps) VALUES (?, ?)').run(category.name, category.commission_bps);
-    ids[category.name] = db.prepare('SELECT id FROM categories WHERE name = ?').get(category.name).id;
+    await db.run('INSERT OR IGNORE INTO categories (name, commission_bps) VALUES (?, ?)', category.name, category.commission_bps);
+    ids[category.name] = (await db.get('SELECT id FROM categories WHERE name = ?', category.name)).id;
   }
   return ids;
 }
 
 // Adds the 4 shops. Returns { 'Chilli Lane Pantry': id, ... }.
-function addSampleShops() {
+async function addSampleShops() {
   const ids = {};
-  const insert = db.prepare(`
-    INSERT INTO sellers (shop_name, slug, description, phone, status, commission_bps, shipping_fee, free_shipping_over, created_at)
-    VALUES (@shop_name, @slug, @description, @phone, @status, @commission_bps, @shipping_fee, @free_shipping_over, @created_at)`);
   for (const shop of SAMPLE_SHOPS) {
-    ids[shop.shop_name] = insert.run({ ...shop, created_at: nowIso() }).lastInsertRowid;
+    ids[shop.shop_name] = (await db.run(`
+      INSERT INTO sellers (shop_name, slug, description, phone, status, commission_bps, shipping_fee, free_shipping_over, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    shop.shop_name, shop.slug, shop.description, shop.phone, shop.status, shop.commission_bps, shop.shipping_fee,
+    shop.free_shipping_over, nowIso())).lastInsertRowid;
   }
   return ids;
 }
 
 // Adds the admin and one login per sample shop. Only the password hash is saved, never the password.
-function addDemoLogins(shopIds, hashPassword) {
-  const insert = db.prepare('INSERT INTO users (email, password_hash, role, seller_id, created_at) VALUES (?, ?, ?, ?, ?)');
+async function addDemoLogins(shopIds, hashPassword) {
   for (const account of DEMO_ACCOUNTS) {
     if (account.role === 'admin' && account.password.length < ADMIN_PASSWORD_MIN) {
       throw new Error(`An admin password must be at least ${ADMIN_PASSWORD_MIN} characters.`);
     }
     const sellerId = account.shop ? shopIds[account.shop] : null;
-    insert.run(account.email, hashPassword(account.password), account.role, sellerId, nowIso());
+    await db.run('INSERT INTO users (email, password_hash, role, seller_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      account.email, hashPassword(account.password), account.role, sellerId, nowIso());
   }
 }
 
 // Adds the 18 sample products.
-function addSampleProducts(shopIds, categoryIds) {
-  const insert = db.prepare(`
-    INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`);
+async function addSampleProducts(shopIds, categoryIds) {
   for (const [shopName, products] of Object.entries(SAMPLE_PRODUCTS)) {
     for (const p of products) {
-      const active = p.switchedOff ? 0 : 1;
-      insert.run(shopIds[shopName], categoryIds[p.category], p.name, p.description, p.emoji, rupees(p.price), p.stock, p.low, active, nowIso());
+      await db.run(`
+        INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted, created_at)
+        VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, 0, ?)`,
+      shopIds[shopName], categoryIds[p.category], p.name, p.description, rupees(p.price), p.stock, p.low, p.switchedOff ? 0 : 1, nowIso());
     }
   }
 }
 
-// The web address of a product's photo, or null when it has none (the page then shows the kit's placeholder art).
+// ---------- Getting the database ready ----------
+
+// Starts (on a laptop) and sets up the database once: tables, settings, seasons, sample data and photos.
+// Every entry point (server.js, the Netlify function, the tests) waits for this before answering anything.
+// Returns true when the sample data was added just now (a brand-new database).
+let readyPromise = null;
+function ready() {
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      if (IS_LOCAL) await startLocalPostgres();
+      // One set-up at a time, even when several live functions start together.
+      return db.tx(async () => {
+        await db.lock('bazaar-setup');
+        await createTables();
+        await addDefaultSettings();
+        await addDefaultSeasons();
+        await addMoreSampleProducts(await addMoreCategories());
+        await addSamplePromoCards();
+        await addSampleShopDetails();
+        const isNew = await fillSampleDataIfEmpty();
+        await addSamplePhotos();
+        return isNew;
+      });
+    })();
+    readyPromise.catch(() => { readyPromise = null; }); // a failed start can be tried again
+  }
+  return readyPromise;
+}
+
+// The web address of a photo, or null when it has none (the page then shows the kit's placeholder art).
 function photoUrl(photo) {
   return photo ? '/uploads/' + photo : null;
 }
 
-module.exports = { ADMIN_PASSWORD_MIN, db, nowIso, searchForm, fillSampleDataIfEmpty, DEMO_ACCOUNTS, DB_FILE, UPLOADS_DIR, photoUrl };
+module.exports = {
+  SCHEMA_SQL, ADDED_COLUMNS, ADMIN_PASSWORD_MIN, db, ready, close, nowIso, searchForm, fillSampleDataIfEmpty, DEMO_ACCOUNTS, DB_LABEL, IS_LOCAL,
+  photoUrl, savePhotoBytes, loadPhoto, deletePhoto,
+};

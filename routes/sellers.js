@@ -35,33 +35,33 @@ const NEW_SHOP_SHIPPING_FEE = rupees(50);
 const NEW_SHOP_FREE_SHIPPING_OVER = rupees(499);
 
 // Seller sign-up: shop name, email, password and a 10-digit phone. The shop starts as pending, and the seller is logged in.
-router.post('/api/sellers/signup', (req, res) => {
+router.post('/api/sellers/signup', async (req, res) => {
   const form = readSignupForm(req.body || {});
-  const userId = createPendingShop(form);
-  auth.startSession(res, userId);
+  const userId = await createPendingShop(form);
+  await auth.startSession(res, userId);
   res.status(201).json({ ok: true, redirect: '/seller/' });
 });
 
 // Admin: the shops in one tab (pending, active, suspended or rejected), and how many shops each tab has.
-router.get('/api/admin/shops', auth.requireRole('admin'), (req, res) => {
+router.get('/api/admin/shops', auth.requireRole('admin'), async (req, res) => {
   const tab = SHOP_TABS.includes(req.query.tab) ? req.query.tab : 'pending';
   // Pending: the shop that has waited longest comes first. Other tabs: A to Z.
   const order = tab === 'pending' ? 'sellers.created_at ASC' : 'sellers.shop_name COLLATE NOCASE ASC';
-  const shops = db.prepare(`
+  const shops = await db.all(`
     SELECT sellers.id, sellers.shop_name, sellers.slug, sellers.phone, sellers.status,
            sellers.status_reason, sellers.created_at, users.email
     FROM sellers LEFT JOIN users ON users.seller_id = sellers.id
     WHERE sellers.status = ?
-    ORDER BY ${order}`).all(tab);
-  res.json({ tab, counts: countShopsByStatus(), shops });
+    ORDER BY ${order}`, tab);
+  res.json({ tab, counts: await countShopsByStatus(), shops });
 });
 
 // Admin: approve, reject (reason needed), suspend (reason needed) or reactivate one shop.
-router.post('/api/admin/shops/:id/:action', auth.requireRole('admin'), (req, res) => {
+router.post('/api/admin/shops/:id/:action', auth.requireRole('admin'), async (req, res) => {
   const actionName = req.params.action;
   if (!Object.hasOwn(SHOP_ACTIONS, actionName)) throw new HttpError(404, 'That action does not exist.');
   const action = SHOP_ACTIONS[actionName];
-  const shop = findShop(req.params.id);
+  const shop = await findShop(req.params.id);
   const reason = auth.cleanText((req.body || {}).reason);
 
   if (!action.from.includes(shop.status)) {
@@ -71,47 +71,46 @@ router.post('/api/admin/shops/:id/:action', auth.requireRole('admin'), (req, res
   if (reason.length > 200) throw new HttpError(400, 'The reason must be 200 characters or fewer.');
 
   // Only changes the shop if its status is still what we checked, in case two admins click at once.
-  const change = db.transaction(() => {
-    const result = db.prepare('UPDATE sellers SET status = ?, status_reason = ? WHERE id = ? AND status = ?')
-      .run(action.to, action.needsReason ? reason : null, shop.id, shop.status);
+  await db.tx(async () => {
+    const result = await db.run('UPDATE sellers SET status = ?, status_reason = ? WHERE id = ? AND status = ?',
+      action.to, action.needsReason ? reason : null, shop.id, shop.status);
     if (result.changes !== 1) throw new HttpError(409, 'This shop just changed. Please look again.');
-    if (actionName === 'approve') markApproved(shop.id);
+    if (actionName === 'approve') await markApproved(shop.id);
   });
-  change.immediate();
-  if (actionName === 'approve') mail.sendShopDecision(shop.id, true);
-  if (actionName === 'reject') mail.sendShopDecision(shop.id, false, reason);
+  if (actionName === 'approve') await mail.sendShopDecision(shop.id, true);
+  if (actionName === 'reject') await mail.sendShopDecision(shop.id, false, reason);
 
   res.json({ ok: true, status: action.to, message: `${shop.shop_name} is now ${action.to}.` });
 });
 
 // Seller: their own shop settings (a pending or suspended shop may look, only an open shop may change them).
-router.get('/api/seller/shop', auth.requireSeller('active', 'suspended', 'pending'), (req, res) => {
-  res.json({ shop: shopSettings(req.shop.id), return_choices: RETURN_CHOICES });
+router.get('/api/seller/shop', auth.requireSeller('active', 'suspended', 'pending'), async (req, res) => {
+  res.json({ shop: await shopSettings(req.shop.id), return_choices: RETURN_CHOICES });
 });
 
 // Seller: change their shop's name, description, city, dispatch days, return window, shipping fee and free-shipping
 // limit. The web address (slug) never changes. Old orders keep what was copied into them.
-router.put('/api/seller/shop', auth.requireSeller('active'), (req, res) => {
+router.put('/api/seller/shop', auth.requireSeller('active'), async (req, res) => {
   const form = readShopSettings(req.body || {});
-  const sameName = db.prepare('SELECT id FROM sellers WHERE shop_name = ? COLLATE NOCASE AND id <> ?').get(form.shopName, req.shop.id);
+  const sameName = await db.get('SELECT id FROM sellers WHERE lower(shop_name) = lower(?) AND id <> ?', form.shopName, req.shop.id);
   if (sameName) throw new HttpError(409, 'Another shop already has this name. Please choose another name.');
-  db.prepare(`
+  await db.run(`
     UPDATE sellers SET shop_name = ?, description = ?, city = ?, dispatch_days = ?, return_days = ?, shipping_fee = ?,
-      free_shipping_over = ?, gift_wrap_price = ? WHERE id = ?`)
-    .run(form.shopName, form.description, form.city, form.dispatchDays, form.returnDays, form.shippingFee,
+      free_shipping_over = ?, gift_wrap_price = ? WHERE id = ?`,
+    form.shopName, form.description, form.city, form.dispatchDays, form.returnDays, form.shippingFee,
       form.freeShippingOver, form.giftWrapPrice, req.shop.id);
-  res.json({ ok: true, shop: shopSettings(req.shop.id), message: 'Your shop settings were saved.' });
+  res.json({ ok: true, shop: await shopSettings(req.shop.id), message: 'Your shop settings were saved.' });
 });
 
 // The "Sell with us" page: the default commission and the early-bird offer, with how many places are left.
-router.get('/api/sell-info', (req, res) => {
-  const setting = (key) => Number(db.prepare('SELECT value FROM settings WHERE key = ?').get(key).value);
-  const slots = setting('early_bird_slots');
-  const taken = db.prepare('SELECT COUNT(*) AS n FROM sellers WHERE early_bird = 1').get().n;
+router.get('/api/sell-info', async (req, res) => {
+  const setting = async (key) => Number((await db.get('SELECT value FROM settings WHERE key = ?', key)).value);
+  const slots = await setting('early_bird_slots');
+  const taken = (await db.get('SELECT COUNT(*) AS n FROM sellers WHERE early_bird = 1')).n;
   res.json({
-    default_commission_bps: setting('default_commission_bps'),
+    default_commission_bps: await setting('default_commission_bps'),
     early_bird: slots > 0 ? {
-      slots, places_left: Math.max(slots - taken, 0), rate_bps: setting('early_bird_bps'), days: setting('early_bird_days'),
+      slots, places_left: Math.max(slots - taken, 0), rate_bps: await setting('early_bird_bps'), days: await setting('early_bird_days'),
     } : null,
   });
 });
@@ -140,39 +139,39 @@ function makeSlug(shopName) {
 }
 
 // Saves the new pending shop and its login together (both or neither). Returns the new user's id.
-function createPendingShop(form) {
-  if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(form.email)) {
+async function createPendingShop(form) {
+  if (await db.get('SELECT 1 FROM users WHERE email = ?', form.email)) {
     throw new HttpError(409, 'This email already has an account. Please log in instead.');
   }
-  if (db.prepare('SELECT 1 FROM sellers WHERE slug = ?').get(form.slug)) {
+  if (await db.get('SELECT 1 FROM sellers WHERE slug = ?', form.slug)) {
     throw new HttpError(409, 'A shop with this name already exists. Please choose another name.');
   }
   const passwordHash = auth.hashPassword(form.password);
-  const saveBoth = db.transaction(() => {
-    const shop = db.prepare(`
+  const saveBoth = () => db.tx(async () => {
+    const shop = await db.run(`
       INSERT INTO sellers (shop_name, slug, description, phone, status, shipping_fee, free_shipping_over, created_at)
-      VALUES (?, ?, '', ?, 'pending', ?, ?, ?)`)
-      .run(form.shopName, form.slug, form.phone, NEW_SHOP_SHIPPING_FEE, NEW_SHOP_FREE_SHIPPING_OVER, nowIso());
-    const user = db.prepare(`
+      VALUES (?, ?, '', ?, 'pending', ?, ?, ?)`,
+      form.shopName, form.slug, form.phone, NEW_SHOP_SHIPPING_FEE, NEW_SHOP_FREE_SHIPPING_OVER, nowIso());
+    const user = await db.run(`
       INSERT INTO users (email, password_hash, role, seller_id, created_at)
-      VALUES (?, ?, 'seller', ?, ?)`)
-      .run(form.email, passwordHash, shop.lastInsertRowid, nowIso());
+      VALUES (?, ?, 'seller', ?, ?)`,
+      form.email, passwordHash, shop.lastInsertRowid, nowIso());
     return user.lastInsertRowid;
   });
   try {
-    return saveBoth();
+    return await saveBoth();
   } catch (err) {
     // Two sign-ups with the same email or name at the same moment: the database refuses the second one.
-    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') throw new HttpError(409, 'This email or shop name is already taken.');
+    if (err.code === 'UNIQUE_VIOLATION') throw new HttpError(409, 'This email or shop name is already taken.');
     throw err;
   }
 }
 
 // One shop's settings, as the seller sees them (the money in paise).
-function shopSettings(shopId) {
-  return db.prepare(`
+async function shopSettings(shopId) {
+  return db.get(`
     SELECT shop_name, slug, description, city, dispatch_days, return_days, shipping_fee, free_shipping_over, gift_wrap_price, status
-    FROM sellers WHERE id = ?`).get(shopId);
+    FROM sellers WHERE id = ?`, shopId);
 }
 
 // Checks the shop settings form. Money is typed in rupees. Throws a plain message for the first problem.
@@ -202,26 +201,28 @@ function readShopSettings(body) {
 }
 
 // A shop was approved: remember when, and put it in the early-bird group while the offer has places left
-// (a shop that was in the group before keeps its place).
-function markApproved(shopId) {
-  db.prepare('UPDATE sellers SET approved_at = ? WHERE id = ?').run(nowIso(), shopId);
-  const slots = Number(db.prepare("SELECT value FROM settings WHERE key = 'early_bird_slots'").get().value);
-  const taken = db.prepare('SELECT COUNT(*) AS n FROM sellers WHERE early_bird = 1').get().n;
-  if (taken < slots) db.prepare('UPDATE sellers SET early_bird = 1 WHERE id = ?').run(shopId);
+// (a shop that was in the group before keeps its place). Runs inside the approve transaction; the lock makes two
+// approvals at the same moment take their turn, so they can never both take the last place.
+async function markApproved(shopId) {
+  await db.lock('early-bird');
+  await db.run('UPDATE sellers SET approved_at = ? WHERE id = ?', nowIso(), shopId);
+  const slots = Number((await db.get("SELECT value FROM settings WHERE key = 'early_bird_slots'")).value);
+  const taken = (await db.get('SELECT COUNT(*) AS n FROM sellers WHERE early_bird = 1')).n;
+  if (taken < slots) await db.run('UPDATE sellers SET early_bird = 1 WHERE id = ?', shopId);
 }
 
 // Finds a shop by the id in the address (digits only), or answers 404.
-function findShop(idText) {
+async function findShop(idText) {
   const id = auth.readId(idText);
-  const shop = id ? db.prepare('SELECT * FROM sellers WHERE id = ?').get(id) : null;
+  const shop = id ? await db.get('SELECT * FROM sellers WHERE id = ?', id) : null;
   if (!shop) throw new HttpError(404, 'That shop does not exist.');
   return shop;
 }
 
 // { pending: 1, active: 3, suspended: 0, rejected: 0 }
-function countShopsByStatus() {
+async function countShopsByStatus() {
   const counts = { pending: 0, active: 0, suspended: 0, rejected: 0 };
-  for (const row of db.prepare('SELECT status, COUNT(*) AS n FROM sellers GROUP BY status').all()) {
+  for (const row of await db.all('SELECT status, COUNT(*) AS n FROM sellers GROUP BY status')) {
     counts[row.status] = row.n;
   }
   return counts;
