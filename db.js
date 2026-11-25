@@ -1,5 +1,7 @@
 // db.js - the database: creates every table, and fills a brand-new database with sample data.
 // The data file is marketplace.db, or the file named in the DB_FILE environment variable (tests use their own file).
+const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { rupees } = require('./money');
@@ -489,6 +491,31 @@ function addSampleShopDetails() {
   }
 }
 
+// The sample photos (free Unsplash photos, see CREDITS.md) live in the sample-photos folder, named after what they
+// show: category-<name>.jpg, promo-<title>.jpg, product-<name>.jpg. A category, promo card or product that has NO photo
+// yet and has a matching file gets a copy of it in the uploads folder under a new random name. A photo someone already
+// uploaded is never replaced, so this only fills gaps (for example in a friend's brand-new database).
+const SAMPLE_PHOTOS_DIR = path.join(__dirname, 'sample-photos');
+const photoSlug = (text) => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function addSamplePhotos() {
+  if (!fs.existsSync(SAMPLE_PHOTOS_DIR)) return;
+  const files = new Set(fs.readdirSync(SAMPLE_PHOTOS_DIR));
+  const targets = [
+    ['category', 'categories', 'name'], ['promo', 'promo_cards', 'title'], ['product', 'products', 'name'],
+  ];
+  for (const [kind, table, nameColumn] of targets) {
+    const rows = db.prepare(`SELECT id, ${nameColumn} AS name FROM ${table} WHERE photo IS NULL OR photo = ''`).all();
+    for (const row of rows) {
+      const file = `${kind}-${photoSlug(row.name)}.jpg`;
+      if (!files.has(file)) continue;
+      const newName = crypto.randomBytes(16).toString('hex') + '.jpg';
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+      fs.copyFileSync(path.join(SAMPLE_PHOTOS_DIR, file), path.join(UPLOADS_DIR, newName), fs.constants.COPYFILE_EXCL);
+      db.prepare(`UPDATE ${table} SET photo = ? WHERE id = ?`).run(newName, row.id);
+    }
+  }
+}
+
 createTables();
 addMissingColumns();
 addDefaultSettings();
@@ -496,6 +523,7 @@ addDefaultSeasons();
 addMoreSampleProducts(addMoreCategories());
 addSamplePromoCards();
 addSampleShopDetails();
+addSamplePhotos();
 
 // ---------- Sample data (only for a brand-new, empty database) ----------
 
@@ -593,6 +621,7 @@ function fillSampleDataIfEmpty() {
   addSampleSizes();
   addMoreSampleProducts(MORE_CATEGORIES.map(([name]) => name));
   db.exec("UPDATE sellers SET approved_at = created_at WHERE approved_at IS NULL AND status = 'active'");
+  addSamplePhotos();
   return true;
 }
 

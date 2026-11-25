@@ -1,5 +1,11 @@
 # Bazaar Lane: Multi-Vendor Marketplace — the full prompt pack
 
+> **Design system (the source of truth for the look):** https://claude.ai/artifact/CfXYWRG1NdSqw8rznx5bS4#readme. It is the Interaction Kit, and the project's `kit/` folder is a copy of it. Every prompt in this file follows its README, `screen-map.md`, tokens (themes lane, night, cacao) and its 14 components. If the design system changes, paste the "Sync the kit" prompt below first.
+>
+> ```text
+> Sync the kit. The Interaction Kit design system at https://claude.ai/artifact/CfXYWRG1NdSqw8rznx5bS4 is the source of truth for the look. Compare it with kit/ (README.md, screen-map.md, tokens.css, tokens.json, components/bundle.js, components/bundle.css, api/). If anything differs, show me the differences and wait for my yes before replacing the files in kit/. Then check every page still follows the kit's rules (one marigold action per screen, no emoji, sentence case, real 4:5 photos, IK.formatMoney, reduced motion) and run npm run check.
+> ```
+
 > Build a marketplace where independent sellers manage products, inventory, orders and fulfilment. Include customer storefronts, payment integration, commissions and a centralized admin dashboard.
 
 This file gives you every message to paste into Claude Code, section by section, in order. It uses the same method as the Run Your Own Restaurant course (notebook first, plan, build one sector at a time, test after every sector, finish with a checklist) and carries over everything we learned building Chilli Lane. From Sector 2 on, it also follows Wix's guide *How to build a marketplace website* and the pages it links to (see Appendix B).

@@ -1,5 +1,11 @@
 # Bazaar Lane — Christmas mode (the last prompt)
 
+> **Design system (the source of truth for the look):** https://claude.ai/artifact/CfXYWRG1NdSqw8rznx5bS4#readme. It is the Interaction Kit, and the project's `kit/` folder is a copy of it. Every prompt in this file follows its README, `screen-map.md`, tokens (themes lane, night, cacao) and its 14 components. If the design system changes, paste the "Sync the kit" prompt below first.
+>
+> ```text
+> Sync the kit. The Interaction Kit design system at https://claude.ai/artifact/CfXYWRG1NdSqw8rznx5bS4 is the source of truth for the look. Compare it with kit/ (README.md, screen-map.md, tokens.css, tokens.json, components/bundle.js, components/bundle.css, api/). If anything differs, show me the differences and wait for my yes before replacing the files in kit/. Then check every page still follows the kit's rules (one marigold action per screen, no emoji, sentence case, real 4:5 photos, IK.formatMoney, reduced motion) and run npm run check.
+> ```
+
 Like Blinkit, the whole store changes its clothes for a festival, then changes back by itself. This file has the prompts to paste into your marketplace session, in order. It builds a **season system** (so Diwali, Holi or New Year can be added later with one small prompt) and **Christmas** as the first season.
 
 Paste **Prompt 1**, wait until it says it is done and every test passes, then **Prompt 2**, then **Prompt 3**.
@@ -9,7 +15,7 @@ Paste **Prompt 1**, wait until it says it is done and every test passes, then **
 ## Prompt 1 · Build Christmas mode
 
 ```text
-Read CLAUDE.md and kit/README.md first. Build "seasons": a way for the whole marketplace to change into a festival look and change back by itself, like Blinkit does for festivals. The first season is Christmas. Keep every feature, every server rule and every test passing. Do not change any price, stock number or order rule because of a season.
+Read CLAUDE.md and kit/README.md first (kit/ is a copy of the Interaction Kit design system at https://claude.ai/artifact/CfXYWRG1NdSqw8rznx5bS4). Build "seasons": a way for the whole marketplace to change into a festival look and change back by itself, like Blinkit does for festivals. The first season is Christmas. Keep every feature, every server rule and every test passing. Do not change any price, stock number or order rule because of a season.
 
 1. The season system
 - A seasons table: id, key (christmas), name, starts_at, ends_at, enabled (0 or 1). db.js adds it safely and fills Christmas: 1 December to 26 December, 23:59, enabled.

@@ -121,7 +121,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong on the server.' });
 });
 
-if (fillSampleDataIfEmpty()) console.log('New database: sample data added. Demo logins are in DEMO_LOGINS.md.');
+if (fillSampleDataIfEmpty()) console.log('New database: sample data added. Demo logins are in DEMO_ACCOUNTS in db.js.');
 
 // Every minute: unpaid online orders older than 30 minutes are cancelled and their stock goes back.
 setInterval(() => {
