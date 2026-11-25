@@ -3,8 +3,10 @@
 // itself while someone is changing a card: it only loads again after a save.
 
 const promoNote = document.getElementById('message');
-const TONE_WORDS = { accent: 'Marigold', success: 'Green', sunk: 'Grey', danger: 'Rose' };
+// The colour names the admin picks from; they match the kit tokens each tone uses (success is teal, danger is red).
+const TONE_WORDS = { accent: 'Marigold', success: 'Teal', sunk: 'Grey', danger: 'Soft red' };
 
+// Loads the promo cards and the category tiles and draws an editor for each.
 async function loadPromoCards() {
   try {
     const [cards, home] = await Promise.all([api('GET', '/api/admin/promo-cards'), api('GET', '/api/home')]);
@@ -27,6 +29,7 @@ function promoPreview(card) {
   return preview;
 }
 
+// One promo card editor: preview, shown on or off, title, line, colour, link, Save and Change photo.
 function promoEditor(card, tones) {
   const box = make('article', 'card promo-admin-card');
   const top = make('div', 'card-top');
@@ -79,6 +82,7 @@ function promoEditor(card, tones) {
   return box;
 }
 
+// Adds one labelled text box to a form and returns the box.
 function field(form, labelText, id, value, maxLength) {
   const box = make('div', 'field');
   const label = make('label', '', labelText);
@@ -117,6 +121,7 @@ function photoPicker(address, note) {
   return label;
 }
 
+// One category tile: its photo and Change photo.
 function tileEditor(tile) {
   const item = make('li');
   const frame = make('span', 'tile-photo');

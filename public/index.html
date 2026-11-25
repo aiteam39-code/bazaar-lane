@@ -27,7 +27,20 @@
       <ul id="promo-cards" class="promo-row"></ul>
     </section>
 
-    <section class="reveal" aria-labelledby="categories-title">
+    <section id="top-categories-section" aria-labelledby="top-categories-title">
+      <h2 id="top-categories-title">Top categories</h2>
+      <div id="top-categories" class="top-categories"></div>
+    </section>
+
+    <section id="new-section" aria-labelledby="new-title">
+      <div class="section-head">
+        <h2 id="new-title">New from makers</h2>
+        <a class="see-all" href="/search?sort=newest" aria-label="See all new products">See all</a>
+      </div>
+      <div id="new-products" class="product-grid new-row"></div>
+    </section>
+
+    <section aria-labelledby="categories-title">
       <h2 id="categories-title">Shop by category</h2>
       <ul id="category-tiles" class="tile-grid"></ul>
     </section>
@@ -35,13 +48,13 @@
     <div id="category-rows" class="category-rows"></div>
     <div id="rows-more" class="rows-more" aria-live="polite"></div>
 
-    <section class="reveal" aria-labelledby="shops-title">
+    <section aria-labelledby="shops-title">
       <h2 id="shops-title">The shops</h2>
       <div id="shops" class="grid three"></div>
       <p id="no-shops" class="muted hidden">No shops are open yet. Please come back soon.</p>
     </section>
 
-    <section class="sell-band reveal" aria-labelledby="sell-title">
+    <section class="sell-band" aria-labelledby="sell-title">
       <h2 id="sell-title">Make things by hand? Sell them here.</h2>
       <p>Open your own shop in a few minutes. We only earn when you sell.</p>
       <a class="button secondary" href="/sell">Start selling</a>

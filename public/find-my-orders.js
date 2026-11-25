@@ -9,5 +9,6 @@ document.getElementById('find-form').addEventListener('submit', async (event) =>
     showMessage(message, answer.message, 'ok');
   } catch (error) {
     showMessage(message, error.message, 'error');
+    if (window.IK && IK.sound) IK.sound.play('error'); // the kit's error cue (silent unless sound is switched on)
   }
 });

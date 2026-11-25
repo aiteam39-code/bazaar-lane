@@ -5,6 +5,7 @@
 const payoutsMessage = document.getElementById('message');
 const moneyRoll = (paise) => ({ value: paise / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: false });
 
+// Loads payouts due, every shop balance and recent payouts, and draws them.
 async function loadPayouts() {
   try {
     const data = await api('GET', '/api/admin/payouts');
@@ -19,6 +20,7 @@ async function loadPayouts() {
   }
 }
 
+// One shop: its balance and the Record payout form.
 function shopCard(shop) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
@@ -31,6 +33,7 @@ function shopCard(shop) {
   return card;
 }
 
+// The Record payout form for one shop (amount, reference, ConfirmButton).
 function payoutForm(shop) {
   const form = make('div', 'inline-row');
   const amount = make('input', 'short-box');

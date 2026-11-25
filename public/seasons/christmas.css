@@ -83,21 +83,22 @@ html[data-season="christmas"] .site-header::before {
 html[data-season="christmas"] .site-header::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: -14px; height: 22px; pointer-events: none;
   background: var(--xmas-lights) left top / 120px 22px repeat-x;
-  animation: xmas-twinkle 3.6s ease-in-out infinite;
+  /* Season exception: a slow 3.6s loop (longer than the kit's durations) so the lights glow, never flash. */
+  animation: xmas-twinkle 3.6s var(--ease-in-out) infinite;
 }
 @keyframes xmas-twinkle {
   0%, 100% { opacity: 1; filter: brightness(1); }
   50% { opacity: 0.78; filter: brightness(1.18); }
 }
 html[data-season="christmas"] .site-header .brand::before {
-  content: ''; display: inline-block; width: 20px; height: 20px; margin-right: 6px; vertical-align: -3px;
+  content: ''; display: inline-block; width: 20px; height: 20px; margin-right: var(--space-2); vertical-align: -3px;
   background: var(--xmas-sprig) center / contain no-repeat;
 }
-html[data-season="christmas"] .shop-main { padding-top: 26px; }
+html[data-season="christmas"] .shop-main { padding-top: var(--space-5); }
 
 /* ---------- Holly beside section headings ---------- */
 html[data-season="christmas"] main h2::after {
-  content: ''; display: inline-block; width: 22px; height: 14px; margin-left: 8px; vertical-align: 0;
+  content: ''; display: inline-block; width: 22px; height: 14px; margin-left: var(--space-2); vertical-align: 0;
   background: var(--xmas-holly) center / contain no-repeat;
 }
 
@@ -125,18 +126,19 @@ html[data-season="christmas"] .carousel-stage::after {
 }
 
 /* ---------- The home page: the banner dressed for Christmas, and the gift rows (made by christmas.js) ---------- */
-html[data-season="christmas"] .home-banner.is-christmas { background: var(--inverse); color: var(--on-inverse); }
+/* The banner is painted --inverse, which is also the season's --focus colour: point the focus ring at --on-inverse here. */
+html[data-season="christmas"] .home-banner.is-christmas { background: var(--inverse); color: var(--on-inverse); --focus: var(--on-inverse); }
 html[data-season="christmas"] .home-banner.is-christmas h1 { color: var(--on-inverse); }
 html[data-season="christmas"] .home-banner.is-christmas p { color: var(--on-inverse-muted); }
 html[data-season="christmas"] .home-banner.is-christmas::after {
-  content: ''; position: absolute; right: 14px; bottom: 12px; width: 64px; height: 42px; pointer-events: none;
+  content: ''; position: absolute; right: var(--space-3); bottom: var(--space-3); width: 64px; height: 42px; pointer-events: none;
   background: var(--xmas-holly) center / contain no-repeat;
 }
-/* ---------- The bag: a gift sack (christmas.js swaps the icon; the rolling count stays) ---------- */
-html[data-season="christmas"] .bag-link.is-empty svg { color: var(--accent-ink); }
+/* ---------- The bag: a gift sack (christmas.js swaps the icon; it keeps the header's ink colour) ---------- */
 
 /* ---------- Snowfall and the footer switch ---------- */
 .xmas-snow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.xmas-snow-note { margin: var(--space-1) 0 0; font: var(--text-type-caption); color: var(--ink-muted); }
 html[data-season="christmas"] .shop-main, html[data-season="christmas"] .site-footer { position: relative; z-index: 1; }
 
 /* ---------- Reduced motion: every state change stays, the movement goes ---------- */

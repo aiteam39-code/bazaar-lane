@@ -1,6 +1,6 @@
 // seller/home.js - the seller's home page: their own shop's status card and, once approved, their dashboard (their
 // shop only): new orders (with a badge), orders to pack, LATE orders, sales today, balance, rating, product views this
-// week, orders divided by views, LOW products by name, and the kit's StackedBars of sales by week split by category.
+// week, orders divided by views, LOW products by name, and the kit's StackedBars of sales by week split into new and repeat buyers.
 // It refreshes every 5 seconds, so the page changes by itself when the admin approves the shop or an order arrives.
 
 // What the seller sees for each shop status.
@@ -13,12 +13,12 @@ const SHOP_STATUS_TEXT = {
   active: {
     icon: 'checkCircle',
     title: 'Your shop is live',
-    text: 'Customers can see your shop and its products. Use Products to add and change them. Orders and earnings will be added here soon.',
+    text: 'Customers can see your shop and its products. Use Orders to accept new orders and Products to change your listings.',
   },
   rejected: {
     icon: 'close',
     title: 'Your shop was not approved',
-    text: 'You cannot sell with this shop.',
+    text: 'You cannot sell with this shop yet. Read the reason below, fix it, then use the contact page to ask the admin to look again.',
   },
   suspended: {
     icon: 'alert',
@@ -64,6 +64,7 @@ function showMyShop(shop) {
     make('p', '', info.text)
   );
   if (shop.status_reason) card.append(make('p', 'reason', 'Reason: ' + shop.status_reason));
+  if (shop.status === 'rejected') card.append(contactLink());
 
   // Products: for a live or suspended shop. "See your shop": only while customers can see it.
   document.getElementById('shop-links').classList.toggle('hidden', shop.status !== 'active' && shop.status !== 'suspended');
@@ -73,13 +74,20 @@ function showMyShop(shop) {
   if (shop.status === 'active' || shop.status === 'suspended') loadDashboard();
 }
 
+// The next step for a rejected shop: a link to the contact page.
+function contactLink() {
+  const link = make('a', 'button secondary', 'Contact the admin');
+  link.href = '/contact';
+  return link;
+}
+
 // The shop's numbers (only this seller's own shop; the server decides).
 async function loadDashboard() {
   const data = await api('GET', '/api/seller/dashboard');
   if (!dataChanged('seller-dashboard', data)) return;
   const money = (paise) => ({ value: paise / 100, money: true });
   const tiles = [
-    sellerTile('New orders', { value: data.new_orders }, data.new_orders ? 'Accept or reject' : null),
+    sellerTile('New orders', { value: data.new_orders }, null, data.new_orders ? 'Accept or reject' : 'None waiting', data.new_orders ? 'is-new' : ''),
     sellerTile('Orders to pack', { value: data.to_pack }),
     sellerTile('LATE orders', { value: data.late_orders }, data.late_orders ? 'LATE' : null),
     sellerTile('Sales today (delivered)', money(data.sales_today)),
@@ -97,17 +105,18 @@ async function loadDashboard() {
   document.getElementById('low-box').classList.toggle('hidden', data.low_products.length === 0);
   document.getElementById('low-list').replaceChildren(...data.low_products.map((p) => make('li', '', `${p.name}: ${p.stock} left (LOW at ${p.low_stock_level})`)));
   mountKit(document.getElementById('sales-chart'), IK.StackedBars, {
-    title: 'Sales by week',
+    title: 'Sales by buyer',
     series: data.weekly_sales.series,
-    datasets: { week: { label: 'Week', caption: 'last 6 weeks, delivered orders', bars: data.weekly_sales.bars } },
+    datasets: { week: { label: 'Week', caption: 'new and repeat buyers, last 6 weeks, delivered orders', bars: data.weekly_sales.bars } },
     format: (n) => formatMoney(Math.round(n * 100)),
   });
   document.getElementById('dashboard').classList.remove('hidden');
 }
 
-// One tile with a big rolling number; a red word when it needs attention (never colour alone).
-function sellerTile(label, number, alertWord, note) {
-  const box = make('div', alertWord ? 'tile is-alert' : 'tile');
+// One tile with a big rolling number; a red word only for a problem like LATE (never colour alone).
+// extraClass 'is-new' marks new orders in the calm accent style: new orders are good news, not an error.
+function sellerTile(label, number, alertWord, note, extraClass) {
+  const box = make('div', alertWord ? 'tile is-alert' : ('tile ' + (extraClass || '')).trim());
   box.append(make('p', 'tile-label', label));
   const value = make('p', 'kpi tile-value');
   const format = number.money ? (n) => formatMoney(Math.round(n * 100)) : number.decimals ? { minimumFractionDigits: 1, maximumFractionDigits: 1 } : undefined;

@@ -13,11 +13,14 @@
 
   <main class="shop-main narrow-wide">
     <ol id="done-steps" class="steps hidden" aria-label="Checkout steps"><li>Bag</li><li>Details</li><li>Pay</li><li class="is-current" aria-current="step">Done</li></ol>
+    <h1 id="order-title" data-not-found-title="Order not found">Your order</h1>
     <div id="thanks" class="message ok hidden" role="status">Thank you. Your order is placed. This page is your private link to it: you can find it again under My orders.</div>
+    <section id="new-total" class="card order-total-now hidden" aria-label="Order total">
+      <div class="total-row grand"><span>Order total</span><span id="new-grand"></span></div>
+    </section>
     <div id="message" class="message" role="alert"></div>
 
-    <section id="order" class="hidden">
-      <h1 id="order-title">Your order</h1>
+    <section id="order" class="hidden" aria-labelledby="order-title">
       <p id="order-meta" class="muted"></p>
       <p id="order-address" class="small"></p>
       <div id="parts"></div>
@@ -32,9 +35,8 @@
 
     <section id="not-found" class="card status-card hidden">
       <div class="status-icon" data-icon="alert" aria-hidden="true"></div>
-      <h2>Order not found</h2>
-      <p class="muted">Please check the link. Orders you placed on this device are under My orders.</p>
-      <p><a href="/orders.html">My orders</a> · <a href="/">Home</a></p>
+      <p>We could not find an order for this link. Please open the link from your order email again. Orders you placed on this device are under My orders.</p>
+      <p><a href="/orders.html">My orders</a> · <a href="/find-my-orders.html">Find my orders</a> · <a href="/">Home</a></p>
     </section>
   </main>
 

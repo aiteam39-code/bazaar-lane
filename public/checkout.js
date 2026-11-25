@@ -33,7 +33,7 @@ async function loadCheckout() {
   }
 }
 
-// "Your cart is empty".
+// "Your bag is empty".
 function showEmptyCart() {
   document.getElementById('summary').classList.add('hidden');
   checkoutForm.classList.add('hidden');
@@ -68,26 +68,51 @@ function showPhoneCheck() {
 }
 checkoutForm.querySelectorAll('input[name=payment]').forEach((radio) => radio.addEventListener('change', showPhoneCheck));
 
-// "Send code": the server sends a code to the phone (into the outbox; the page shows it as a test SMS).
+// "Send code": the server sends a code to the phone (into the outbox). Outside production the server also sends the
+// code back, and the page shows it marked as a test SMS. Then the button counts down 30 seconds before a new code.
 document.getElementById('send-code').addEventListener('click', async () => {
   const phone = document.getElementById('phone').value;
   const sentLine = document.getElementById('code-sent');
+  const test = document.getElementById('test-sms');
+  clearMessage(formMessage);
   try {
     const answer = await api('POST', '/api/checkout/phone-code', { phone });
     checkedPhone = phone.replace(/\D/g, '').slice(-10);
     phoneToken = null;
-    sentLine.textContent = answer.message + ' You can ask for a new one after 30 seconds.';
+    sentLine.textContent = answer.message;
     sentLine.classList.remove('hidden');
-    const test = document.getElementById('test-sms');
-    test.textContent = `Test SMS (this app sends no real SMS): your code is ${answer.test_sms}`;
-    test.classList.remove('hidden');
+    test.textContent = answer.test_sms ? `Test SMS (this app sends no real SMS): your code is ${answer.test_sms}` : '';
+    test.classList.toggle('hidden', !answer.test_sms);
     otpState = { value: '', status: 'idle', message: '' };
     document.getElementById('otp').classList.remove('hidden');
     drawOtp(true);
+    startResendCountdown(answer.resend_after_seconds || 30);
   } catch (error) {
+    playSound('error');
     showMessage(formMessage, error.message, 'error');
   }
 });
+
+// Switches "Send code" off and counts down ("Send a new code in 29 s"), then offers "Send a new code".
+// The server still refuses a new code within 30 seconds, whatever the page does.
+let resendTimer = null;
+function startResendCountdown(seconds) {
+  const button = document.getElementById('send-code');
+  let left = seconds;
+  clearInterval(resendTimer);
+  button.disabled = true;
+  button.textContent = `Send a new code in ${left} s`;
+  resendTimer = setInterval(() => {
+    left -= 1;
+    if (left > 0) {
+      button.textContent = `Send a new code in ${left} s`;
+      return;
+    }
+    clearInterval(resendTimer);
+    button.disabled = false;
+    button.textContent = 'Send a new code';
+  }, 1000);
+}
 
 // The kit's code boxes. When all 6 are filled, the server checks the code.
 function drawOtp(autoFocus) {
@@ -98,6 +123,8 @@ function drawOtp(autoFocus) {
   });
 }
 
+// Asks the server whether the 6 digits are the right code. Right: the "paid" sound (when sound is on) and the
+// phone is checked. Wrong: the server's words ("That code didn't match. 4 tries left.") and the "error" sound.
 async function checkCode(code) {
   otpState = { value: code, status: 'verifying', message: 'Checking...' };
   drawOtp(false);
@@ -105,7 +132,9 @@ async function checkCode(code) {
     const answer = await api('POST', '/api/checkout/phone-verify', { phone: checkedPhone, code });
     phoneToken = answer.phone_token;
     otpState = { value: code, status: 'success', message: 'Phone checked.' };
+    playSound('paid');
   } catch (error) {
+    playSound('error');
     otpState = { value: code, status: 'error', message: error.message };
   }
   drawOtp(false);
@@ -113,11 +142,11 @@ async function checkCode(code) {
 }
 
 // The order summary: each shop with its products, shipping and total, then the grand total.
-// Products with a problem are listed with the server's message and a link back to the cart.
+// A product with a problem shows the server's message and asks the customer to fix it in the bag.
 function showSummary(priced) {
   const groups = priced.groups.map((group) => {
     const box = make('div', 'summary-group');
-    box.append(make('h3', '', group.shop_name));
+    box.append(make('h3', '', vendorLine({ shop_name: group.shop_name, city: group.city })));
     for (const line of group.lines) {
       box.append(summaryRow(`${line.quantity} × ${line.name}`, formatMoney(line.line_total)));
     }
@@ -134,7 +163,7 @@ function showSummary(priced) {
   cartIsReady = priced.problems.length === 0 && priced.groups.length > 0;
   if (priced.problems.length > 0) {
     const first = priced.problems[0].message;
-    showMessage(checkoutMessage, `${first} Please fix it in the cart first.`, 'error');
+    showMessage(checkoutMessage, `${first} Fix it in your bag first.`, 'error');
   } else {
     clearMessage(checkoutMessage);
   }
@@ -184,6 +213,7 @@ checkoutForm.addEventListener('submit', async (event) => {
     if (result.payment.pay_url) return location.assign(result.payment.pay_url);
     openRazorpay(result.payment, result.tracking_url);
   } catch (error) {
+    playSound('error');
     showMessage(formMessage, error.message, 'error');
     await loadCheckout(); // a price or the stock may have changed: show the bag as it is now
     updatePlaceButton();
@@ -261,9 +291,15 @@ function openRazorpay(payment, trackingUrl) {
 async function sendPaymentResult(result) {
   try {
     const answer = await api('POST', '/api/payments/verify', result);
-    if (answer.status === 'paid') saveCart([]);
+    if (answer.status === 'paid') {
+      saveCart([]);
+      playSound('paid');
+    } else {
+      playSound('error');
+    }
     location.assign(answer.tracking_url);
   } catch (error) {
+    playSound('error');
     showMessage(formMessage, error.message, 'error');
   }
 }

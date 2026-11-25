@@ -7,6 +7,7 @@ const auth = require('../auth');
 const payments = require('../payments');
 const mail = require('../mail');
 const { sendPage, pageTitle } = require('../pages');
+const { formatMoney } = require('../money');
 
 const router = express.Router();
 const { HttpError } = auth;
@@ -14,6 +15,7 @@ const CODE_MINUTES = 10;       // a phone code works for 10 minutes
 const RESEND_SECONDS = 30;     // a new code can be asked for after 30 seconds
 const MOST_CODE_TRIES = 5;     // 5 wrong codes and a new one is needed
 const VERIFIED_MINUTES = 30;   // a checked phone can place cash-on-delivery orders for 30 minutes
+const SHOW_TEST_CODE = process.env.NODE_ENV !== 'production'; // the code is shown on screen and logged only outside production
 
 // ---------- FakePay (only used when no Razorpay keys are set) ----------
 
@@ -40,17 +42,19 @@ router.post('/api/payments/verify', (req, res) => {
     ok: true,
     status: result.status,
     tracking_url: result.trackingUrl + (paid ? '?new=1' : ''),
-    message: paid ? 'Payment received. Thank you.' : 'Payment declined. Try another card or UPI.',
+    message: paid ? 'Payment received. Thank you.'
+      : 'Payment declined, so the order was cancelled and nothing was charged. Your bag still has the products: go back to it to try again.',
   });
 });
 
 // ---------- The phone code before a cash-on-delivery order ----------
 
-// Sends a 6-digit code to the phone. There is no SMS service: the "SMS" goes into the outbox, and in this test app
-// the page also shows it, marked as a test SMS.
+// Sends a 6-digit code to the phone. There is no SMS service: the "SMS" goes into the outbox. Outside production the
+// code is also printed in the server log and sent back as test_sms, so the page can show it marked as a test SMS.
+// A new code only after 30 seconds.
 router.post('/api/checkout/phone-code', (req, res) => {
   const phone = auth.cleanPhone((req.body || {}).phone);
-  if (!auth.isValidPhone(phone)) throw new HttpError(400, 'Phone must be exactly 10 digits.');
+  if (!auth.isValidPhone(phone)) throw new HttpError(400, 'Phone must be exactly 10 digits. Type your mobile number without +91.');
   const old = db.prepare('SELECT sent_at FROM phone_codes WHERE phone = ?').get(phone);
   if (old && Date.now() - Date.parse(old.sent_at) < RESEND_SECONDS * 1000) {
     throw new HttpError(429, `A code was just sent. You can ask for a new one after ${RESEND_SECONDS} seconds.`);
@@ -64,21 +68,28 @@ router.post('/api/checkout/phone-code', (req, res) => {
       expires_at = excluded.expires_at, tries = 0, verify_token = NULL, verified_until = NULL`)
     .run(phone, codeHash(phone, code), now.toISOString(), new Date(now.getTime() + CODE_MINUTES * 60000).toISOString());
   mail.sendEmail(`SMS to ${phone}`, 'Your Bazaar Lane code', [`Your Bazaar Lane code is ${code}. It works for ${CODE_MINUTES} minutes.`]);
-  res.json({ ok: true, message: `We sent a 6-digit code to the phone ending ${phone.slice(-4)}.`, test_sms: code });
+  const answer = { ok: true, message: `We sent a 6-digit code to the phone ending ${phone.slice(-4)}.`, resend_after_seconds: RESEND_SECONDS };
+  if (SHOW_TEST_CODE) {
+    console.log(`Test SMS to the phone ending ${phone.slice(-4)}: code ${code} (shown only outside production)`);
+    answer.test_sms = code;
+  }
+  res.json(answer);
 });
 
 // Checks the code. Right: the phone is checked for 30 minutes, with a token only this browser gets.
+// Wrong: "That code didn't match. N tries left."; after 5 wrong tries the code is locked and a new one is needed.
 router.post('/api/checkout/phone-verify', (req, res) => {
   const body = req.body || {};
   const phone = auth.cleanPhone(body.phone);
   const code = String(body.code || '');
   const row = db.prepare('SELECT * FROM phone_codes WHERE phone = ?').get(phone);
   if (!row || Date.parse(row.expires_at) < Date.now()) throw new HttpError(400, 'That code has run out. Ask for a new code.');
-  if (row.tries >= MOST_CODE_TRIES) throw new HttpError(429, 'Too many wrong codes. Ask for a new code.');
+  if (row.tries >= MOST_CODE_TRIES) throw new HttpError(429, 'That code is locked after 5 wrong tries. Ask for a new code.');
   if (!/^\d{6}$/.test(code) || codeHash(phone, code) !== row.code_hash) {
     db.prepare('UPDATE phone_codes SET tries = tries + 1 WHERE phone = ?').run(phone);
     const left = MOST_CODE_TRIES - row.tries - 1;
-    throw new HttpError(400, left > 0 ? `That code didn't match. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'That code didn\'t match. Ask for a new code.');
+    const tries = left > 0 ? `${left} ${left === 1 ? 'try' : 'tries'} left.` : 'No tries left. Ask for a new code.';
+    throw new HttpError(400, `That code didn't match. ${tries}`);
   }
   const token = crypto.randomBytes(24).toString('hex');
   db.prepare('UPDATE phone_codes SET verify_token = ?, verified_until = ? WHERE phone = ?')
@@ -140,7 +151,7 @@ router.post('/api/admin/parts/:id/refund', auth.requireRole('admin'), async (req
   const id = auth.readId(req.params.id);
   if (!id) throw new HttpError(404, 'That part of the order does not exist.');
   const done = await payments.refund(id);
-  res.json({ ok: true, message: `Refunded ${done.amount / 100} rupees.` });
+  res.json({ ok: true, message: `Refunded ${formatMoney(done.amount)}.` });
 });
 
 // The refunds of one payment.

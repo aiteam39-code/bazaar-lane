@@ -77,7 +77,7 @@ function readCustomerDetails(body) {
   const name = auth.cleanText(body.customer_name).replace(/\s+/g, ' ');
   if (name.length < 2 || name.length > 60) throw new HttpError(400, 'Please enter your name (2 to 60 characters).');
   const phone = auth.cleanPhone(body.phone);
-  if (!auth.isValidPhone(phone)) throw new HttpError(400, 'Phone must be exactly 10 digits.');
+  if (!auth.isValidPhone(phone)) throw new HttpError(400, 'Phone must be exactly 10 digits. Type your mobile number without +91.');
   const email = auth.cleanEmail(body.email);
   if (!auth.isValidEmail(email)) throw new HttpError(400, 'Please enter a valid email, like name@example.com.');
   const address = auth.cleanText(body.address).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n');
@@ -90,7 +90,7 @@ function readCustomerDetails(body) {
 // "cod" (Cash on delivery, only while the admin has it switched on). Paying online comes in sector 4.
 function readPaymentMethod(value) {
   if (value === 'cod') {
-    if (!codIsSwitchedOn()) throw new HttpError(400, 'Cash on delivery is switched off right now.');
+    if (!codIsSwitchedOn()) throw new HttpError(400, 'Cash on delivery is switched off right now. Choose Pay online.');
     return 'cod';
   }
   if (value === 'online') return 'online';
@@ -107,12 +107,12 @@ function codIsSwitchedOn() {
 // only when the cart page asks for prices (allowEmpty), never at checkout.
 function readCartLines(value, allowEmpty) {
   if (value === undefined && allowEmpty) return [];
-  if (!Array.isArray(value)) throw new HttpError(400, 'The cart was not sent in the right form.');
+  if (!Array.isArray(value)) throw new HttpError(400, 'Something went wrong with your bag. Reload the page and try again.');
   if (value.length === 0) {
     if (allowEmpty) return [];
-    throw new HttpError(400, 'Your cart is empty. Please add a product first.');
+    throw new HttpError(400, 'Your bag is empty. Add a product first.');
   }
-  if (value.length > MOST_LINES) throw new HttpError(400, `Your cart can hold at most ${MOST_LINES} different products.`);
+  if (value.length > MOST_LINES) throw new HttpError(400, `Your bag can hold at most ${MOST_LINES} different products. Remove some first.`);
   const quantities = new Map(); // product id -> quantity
   for (const line of value) {
     const productId = readProductId(line);
@@ -129,7 +129,7 @@ function readCartLines(value, allowEmpty) {
 function readProductId(line) {
   const value = line && typeof line === 'object' ? line.product_id : undefined;
   const id = auth.readId(typeof value === 'number' ? String(value) : value);
-  if (!id) throw new HttpError(400, 'A product in your cart is not valid. Please remove it and add it again.');
+  if (!id) throw new HttpError(400, 'A product in your bag is not valid. Please remove it and add it again.');
   return id;
 }
 
@@ -194,7 +194,7 @@ function findProductForCart(productId) {
   return db.prepare(`
     SELECT products.id, products.name, products.photo, products.price, products.stock,
            products.active, products.deleted, products.hidden, products.seller_id,
-           sellers.shop_name, sellers.slug AS shop_slug, sellers.status AS shop_status,
+           sellers.shop_name, sellers.slug AS shop_slug, sellers.city AS shop_city, sellers.status AS shop_status,
            sellers.shipping_fee, sellers.free_shipping_over, sellers.dispatch_days, sellers.gift_wrap_price
     FROM products JOIN sellers ON sellers.id = products.seller_id
     WHERE products.id = ?`).get(productId);
@@ -203,10 +203,10 @@ function findProductForCart(productId) {
 // Why this product cannot be bought in this quantity right now, or null when it can. The message names the product;
 // "left" says how many there are when there are just not enough (so the cart can offer to lower the quantity).
 function whyItCannotBeBought(product, quantity) {
-  if (!product) return { message: 'A product in your cart is not sold any more. Please remove it.', left: null };
+  if (!product) return { message: 'A product in your bag is not sold any more. Please remove it.', left: null };
   if (product.deleted) return { message: `${product.name} is not sold any more. Please remove it.`, left: null };
   if (product.shop_status !== 'active') {
-    return { message: `${product.name} cannot be bought right now: its shop is not available.`, left: null };
+    return { message: `${product.name} cannot be bought right now: its shop is not available. Please remove it.`, left: null };
   }
   if (!product.active || product.hidden) return { message: `${product.name} is not for sale right now. Please remove it.`, left: null };
   if (product.stock === 0) return { message: `${product.name} is sold out. Please remove it.`, left: null };
@@ -220,7 +220,7 @@ function whyItCannotBeBought(product, quantity) {
 function groupFor(groupsByShop, product) {
   if (!groupsByShop.has(product.seller_id)) {
     groupsByShop.set(product.seller_id, {
-      seller_id: product.seller_id, shop_name: product.shop_name, shop_slug: product.shop_slug,
+      seller_id: product.seller_id, shop_name: product.shop_name, shop_slug: product.shop_slug, city: product.shop_city,
       shipping_fee: product.shipping_fee, free_shipping_over: product.free_shipping_over,
       delivery: { from_days: product.dispatch_days + 2, to_days: product.dispatch_days + 5 },
       gift_wrap_price: product.gift_wrap_price,
@@ -294,7 +294,7 @@ function takeStock(line) {
     UPDATE products SET stock = stock - ?
     WHERE id = ? AND stock >= ? AND active = 1 AND deleted = 0 AND hidden = 0`)
     .run(line.quantity, line.product_id, line.quantity);
-  if (result.changes !== 1) throw new HttpError(409, `Sorry, ${line.name} just sold out. Please look at your cart again.`);
+  if (result.changes !== 1) throw new HttpError(409, `Sorry, ${line.name} just sold out. Please look at your bag again.`);
 }
 
 // The early-bird rate, while the shop is in the early-bird group and inside its days since approval; else null.

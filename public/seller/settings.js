@@ -11,11 +11,19 @@ async function loadSettings() {
     fillForm(data.shop, data.return_choices);
     const canChange = data.shop.status === 'active';
     settingsForm.querySelectorAll('input, textarea, select, button').forEach((field) => { field.disabled = !canChange; });
-    if (!canChange) showMessage(document.getElementById('message'), 'Your shop is not open, so these settings cannot be changed now.', 'error');
+    if (!canChange) showClosedNote(data.shop.status);
     settingsForm.classList.remove('hidden');
   } catch (error) {
     if (!goToLoginIfNeeded(error)) showMessage(document.getElementById('message'), error.message, 'error');
   }
+}
+
+// A calm note (not an error) for a shop that is not open: what happened and when the settings can be changed.
+function showClosedNote(status) {
+  const when = status === 'suspended' ? 'once the admin reactivates your shop' : 'once the admin approves your shop';
+  const box = document.getElementById('message');
+  box.className = 'message note';
+  box.textContent = `Your shop is not open, so these settings cannot be changed now. You can change them ${when}.`;
 }
 
 // Puts the saved values in the form (money as rupees).

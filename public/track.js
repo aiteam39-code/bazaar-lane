@@ -3,7 +3,8 @@
 // has a Cancel button (the server puts its stock back). A wrong or missing token shows "Order not found".
 // Each part has the kit's OrderTracker: the steps with their times, one human sentence ("Chilli Lane Pantry packed your
 // order."), and while it is on its way, the expected delivery dates. The page refreshes every 5 seconds, so a shop's
-// change shows up by itself. Right after checkout the grand total rolls up once (the kit's one celebration).
+// change shows up by itself. Right after checkout the order total rolls up once near the top (the kit's one
+// celebration), above the OrderTrackers, so it plays where the customer is looking.
 
 const TRACK_STEPS = ['placed', 'accepted', 'packed', 'shipped', 'delivered'];
 let rolledUpOnce = false;
@@ -31,21 +32,32 @@ function showOrder(data) {
   const order = data.order;
   document.title = `Order ${order.code} - ${siteName()}`;
   document.getElementById('order-title').textContent = `Order ${order.code}`;
-  const paid = order.payment_method === 'cod' ? 'Cash on delivery' : 'Paid online';
-  document.getElementById('order-meta').textContent = `Placed ${formatDateTime(order.created_at)} · ${paid} · for ${order.customer_name}`;
+  // Each part says whether it is paid (payment_words), so the order line only says how it is paid.
+  const howPaid = order.payment_method === 'cod' ? 'Cash on delivery' : 'Online payment';
+  document.getElementById('order-meta').textContent = `Placed ${formatDateTime(order.created_at)} · ${howPaid} · for ${order.customer_name}`;
   document.getElementById('order-address').textContent = 'Delivery address: ' + order.address;
   document.getElementById('parts').replaceChildren(...data.parts.map(partBox));
   document.getElementById('sum-items').textContent = formatMoney(order.items_total);
   document.getElementById('sum-shipping').textContent = order.shipping_total === 0 ? 'Free' : formatMoney(order.shipping_total);
-  const celebrate = isNewOrder && !rolledUpOnce;
-  rolledUpOnce = true;
+  showNewOrderTotal(order);
   mountKit(document.getElementById('sum-grand'), IK.RollingNumber, {
-    value: order.grand_total / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: celebrate,
+    value: order.grand_total / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: false,
   });
   document.getElementById('sum-still').textContent = formatMoney(order.still_to_pay);
   document.getElementById('still-row').classList.toggle('hidden', order.still_to_pay === order.grand_total);
   document.getElementById('not-found').classList.add('hidden');
   document.getElementById('order').classList.remove('hidden');
+}
+
+// Right after checkout: the order total near the top rolls up once (animateOnMount), before the shops' parts.
+function showNewOrderTotal(order) {
+  if (!isNewOrder) return;
+  const celebrate = !rolledUpOnce;
+  rolledUpOnce = true;
+  mountKit(document.getElementById('new-grand'), IK.RollingNumber, {
+    value: order.grand_total / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: celebrate,
+  });
+  document.getElementById('new-total').classList.remove('hidden');
 }
 
 // One shop's part: name and status, its products and costs, the reason (if any), the courier (once shipped),
@@ -73,10 +85,9 @@ function partBox(part) {
 
   if (part.reason) box.append(make('p', 'reason', 'Reason: ' + part.reason));
   if (part.courier) box.append(make('p', '', `Sent with ${part.courier}, tracking number ${part.tracking_number}`));
-  box.append(make('p', 'muted small', `Arrives in ${part.delivery.from_days} to ${part.delivery.to_days} days from the order`));
   box.append(historyList(part.history));
   if (typeof partExtras === 'function') partExtras(part, box); // help, reviews (sectors 5 and 6)
-  if (part.can_cancel) box.append(cancelButton(part, box));
+  if (part.can_cancel) box.append(cancelButton(part));
   return box;
 }
 
@@ -158,6 +169,7 @@ function reviewExtras(part, box) {
   }
 }
 
+// The form to rate one product (1 to 5 stars) with an optional review.
 function reviewForm(item) {
   const form = make('form', 'review-form');
   const group = make('fieldset', 'star-picker');
@@ -194,6 +206,7 @@ function reviewForm(item) {
       loadOrder();
     } catch (error) {
       showMessage(note, error.message, 'error');
+      playCue('error');
     }
   });
   return form;
@@ -221,6 +234,7 @@ function helpForm(part) {
       loadOrder();
     } catch (error) {
       showMessage(note, error.message, 'error');
+      playCue('error');
     }
   });
   details.append(label, text, note, send);
@@ -244,35 +258,47 @@ function historyList(history) {
   return list;
 }
 
-// Cancel asks first. Only this shop's part is cancelled; the server puts its items back in stock.
-function cancelButton(part, box) {
-  const button = make('button', 'danger', `Cancel the part from ${part.shop_name}`);
-  button.type = 'button';
-  button.addEventListener('click', () => {
-    openConfirmBox(box, {
-      question: `Cancel the part from ${part.shop_name}? The other shops' parts are not changed.`,
-      confirmText: 'Yes, cancel it',
-      keepText: 'No, keep it',
-      askReason: false,
-      onConfirm: async (reason, boxMessage) => {
-        try {
-          const result = await api('POST', `/api/track/${trackingToken}/parts/${part.id}/cancel`);
-          closeConfirmBoxes();
-          showMessage(trackMessage, result.message, 'ok');
-          forgetDrawnData('order');
-          await loadOrder();
-        } catch (error) {
-          showMessage(boxMessage, error.message, 'error');
-        }
-      },
-    });
+// Cancel: the kit's ConfirmButton asks once ("Cancel this part?"), the second press cancels. Only this shop's part
+// is cancelled; the server puts its items back in stock.
+function cancelButton(part) {
+  const area = make('div', 'cancel-area');
+  const slot = make('span', 'confirm-slot');
+  const note = make('div', 'message');
+  note.setAttribute('role', 'alert');
+  mountKit(slot, IK.ConfirmButton, {
+    label: `Cancel the part from ${part.shop_name}`,
+    confirmLabel: 'Cancel this part?',
+    hint: `Press again to cancel the part from ${part.shop_name}. The other shops' parts are not changed.`,
+    onConfirm: () => cancelPart(part, note),
   });
-  return button;
+  area.append(slot, note);
+  return area;
+}
+
+// Asks the server to cancel one part, then shows the answer and draws the order again.
+async function cancelPart(part, note) {
+  try {
+    const result = await api('POST', `/api/track/${trackingToken}/parts/${part.id}/cancel`);
+    showMessage(trackMessage, result.message, 'ok');
+    forgetDrawnData('order');
+    await loadOrder();
+  } catch (error) {
+    showMessage(note, error.message, 'error');
+    playCue('error');
+  }
+}
+
+// Plays one of the kit's sound cues ('error' here). The kit stays silent unless the shopper turned sound on.
+function playCue(name) {
+  if (window.IK && IK.sound) IK.sound.play(name);
 }
 
 // "Order not found" for a wrong or missing token.
 function showOrderNotFound() {
   document.title = 'Order not found - ' + siteName();
+  const heading = document.getElementById('order-title');
+  heading.textContent = heading.dataset.notFoundTitle; // the page's one H1 says "Order not found"
+  document.getElementById('new-total').classList.add('hidden');
   document.getElementById('order').classList.add('hidden');
   document.getElementById('not-found').classList.remove('hidden');
 }

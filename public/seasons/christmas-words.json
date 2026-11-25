@@ -3,12 +3,15 @@
   "sentences": {
     "placed": "{shop} has your Christmas order and will accept it soon.",
     "accepted": "{shop} accepted your order and is getting it ready.",
-    "packed": "{shop} wrapped your {item} with care.",
-    "shipped": "{shop} wrapped your order and handed it to {courier}.",
-    "delivered": "Delivered in time for the festivities. We hope it brings joy."
+    "packed": "{shop} packed your {item} with care.",
+    "packed_wrapped": "{shop} gift wrapped your {item} with care.",
+    "shipped": "{shop} packed your order and handed it to {courier}.",
+    "shipped_wrapped": "{shop} gift wrapped your order and handed it to {courier}.",
+    "delivered": "Delivered. We hope it brings joy."
   },
   "email": {
-    "shipped": "{shop} wrapped your order and handed it to {courier}.",
-    "delivered": "Your parcel from {shop} has arrived in time for the festivities."
+    "shipped": "{shop} packed your order and handed it to {courier}.",
+    "shipped_wrapped": "{shop} gift wrapped your order and handed it to {courier}.",
+    "delivered": "Your parcel from {shop} has arrived. We hope it brings joy."
   }
 }

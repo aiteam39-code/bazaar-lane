@@ -18,7 +18,7 @@ router.post('/api/track/:token/items/:itemId/review', (req, res) => {
     SELECT order_items.*, seller_orders.status, seller_orders.seller_id
     FROM order_items JOIN seller_orders ON seller_orders.id = order_items.seller_order_id
     WHERE order_items.id = ? AND seller_orders.customer_order_id = ?`).get(auth.readId(req.params.itemId), order.id);
-  if (!item) throw new HttpError(404, 'That product is not in this order.');
+  if (!item) throw new HttpError(404, 'That product is not in this order. Reload the page and pick a product from this order.');
   if (item.status !== 'delivered') throw new HttpError(400, 'You can review a product once it has been delivered.');
   const body = req.body || {};
   const rating = Number(body.rating);
@@ -42,7 +42,7 @@ router.post('/api/products/:id/report', (req, res) => {
   const product = id ? db.prepare(`
     SELECT products.id FROM products JOIN sellers ON sellers.id = products.seller_id
     WHERE products.id = ? AND products.active = 1 AND products.deleted = 0 AND products.hidden = 0 AND sellers.status = 'active'`).get(id) : null;
-  if (!product) throw new HttpError(404, 'This product is not available.');
+  if (!product) throw new HttpError(404, 'This product is no longer on sale, so there is nothing to report.');
   const reason = auth.cleanText((req.body || {}).reason);
   if (!reason) throw new HttpError(400, 'Please say what is wrong with this listing (at most 2000 characters).');
   if (reason.length > 2000) throw new HttpError(400, 'Please keep it to 2000 characters or fewer.');
@@ -132,11 +132,11 @@ router.post('/api/admin/reports/:id/:action', auth.requireRole('admin'), (req, r
   res.json({ ok: true, message: 'The product is hidden. It can no longer be seen or bought.' });
 });
 
-// The customer order with this tracking token, or 404.
+// The customer order with this tracking token, or 404 with what to do next (it is shown in the review form).
 function findOrderByToken(token) {
   const looksRight = typeof token === 'string' && /^[a-f0-9]{64}$/.test(token);
   const order = looksRight ? db.prepare('SELECT * FROM customer_orders WHERE tracking_token = ?').get(token) : null;
-  if (!order) throw new HttpError(404, 'Order not found.');
+  if (!order) throw new HttpError(404, 'Order not found. Open the link from your order email again.');
   return order;
 }
 

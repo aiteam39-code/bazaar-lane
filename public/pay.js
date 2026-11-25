@@ -1,6 +1,6 @@
 // pay.js - FakePay, the pretend payment page used when no Razorpay test keys are set (/pay/fake/<payment id>).
 // A button asks "FakePay" for a signed result, then sends that result to the server, which checks the signature.
-// Paid: the bag is emptied and the order page opens. Failed: the order is cancelled and the stock goes back.
+// Paid: the bag is emptied, the 'paid' sound plays (only when sound is on) and the order page opens. Failed: the order is cancelled and the stock goes back.
 
 const paymentId = pagePathPart(3); // /pay/fake/7 -> "7"
 const payMessage = document.getElementById('message');
@@ -48,12 +48,15 @@ document.querySelectorAll('[data-outcome]').forEach((button) => {
       const answer = await api('POST', '/api/payments/verify', result);
       if (answer.status === 'paid') {
         saveCart([]);
-        return location.assign(answer.tracking_url);
+        playSound('paid'); // heard only when the shopper turned sound on
+        return setTimeout(() => location.assign(answer.tracking_url), 400);
       }
+      playSound('error');
       document.getElementById('pay-details').classList.add('hidden');
-      showMessage(payMessage, answer.message + ' Your order was cancelled and nothing was charged; your bag still has the products.', 'error');
+      showMessage(payMessage, answer.message, 'error');
       showAfterLinks(answer.tracking_url, true);
     } catch (error) {
+      playSound('error');
       showMessage(payMessage, error.message, 'error');
       document.querySelectorAll('[data-outcome]').forEach((b) => { b.disabled = false; });
     }

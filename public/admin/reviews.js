@@ -2,6 +2,7 @@
 
 const adminReviewsMessage = document.getElementById('message');
 
+// Loads every review and draws the list.
 async function loadAdminReviews() {
   try {
     const data = await api('GET', '/api/admin/reviews');
@@ -14,6 +15,7 @@ async function loadAdminReviews() {
   }
 }
 
+// One review: product, shop, stars, words, reply, and Hide or Show.
 function adminReviewCard(review) {
   const card = make('article', 'card');
   const top = make('p', 'review-top');
@@ -37,6 +39,7 @@ function adminReviewCard(review) {
   return card;
 }
 
+// Sends Hide or Show for one review, then draws the list again.
 async function reviewAction(id, action) {
   try {
     const answer = await api('POST', `/api/admin/reviews/${id}/${action}`);

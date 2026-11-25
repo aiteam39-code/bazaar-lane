@@ -5,6 +5,7 @@
 const commissionsMessage = document.getElementById('message');
 const percentOf = (bps) => (bps === null || bps === undefined ? '' : String(bps / 100));
 
+// Loads the default rate, the early-bird offer, the categories and the shops, and draws them.
 async function loadCommissions() {
   try {
     const data = await api('GET', '/api/admin/commissions');
@@ -53,6 +54,7 @@ function shopRow(shop) {
   return box;
 }
 
+// Sends one change to the server, shows the answer and loads the page again.
 async function send(method, address, body) {
   try {
     const answer = await api(method, address, body);

@@ -2,7 +2,7 @@
 // by the shop pages' lists. The filters (price from and to, shop, city, rating, sort) live in the page address, so a
 // search can be shared, and the server decides what can be bought.
 
-const LIST_PAGE_SIZE = 24; // skeletons in the exact count the page shows first
+const LIST_PAGE_SIZE = 24; // skeletons while loading: enough to fill the first screens, so the grid does not jump
 const SORT_CHOICES = [
   ['name', 'A to Z'], ['newest', 'Newest'], ['price_asc', 'Price, low to high'], ['price_desc', 'Price, high to low'],
   ['top_rated', 'Top rated'],
@@ -63,6 +63,7 @@ async function buildFilterForm(host, fixed = {}) {
   host.replaceChildren(form);
 }
 
+// A hidden form field, so a value stays in the address when the form is sent.
 function hiddenField(name, value) {
   const field = make('input');
   field.type = 'hidden';
@@ -71,6 +72,7 @@ function hiddenField(name, value) {
   return field;
 }
 
+// One labelled filter (a label tied to its box).
 function filterField(labelText, control) {
   const field = make('div', 'field filter-field');
   const label = make('label', '', labelText);
@@ -79,6 +81,7 @@ function filterField(labelText, control) {
   return field;
 }
 
+// A text box for one filter, filled with the value from the address.
 function textBox(name, value, type, placeholder, inputMode) {
   const box = make('input');
   box.id = 'filter-' + name;
@@ -91,6 +94,7 @@ function textBox(name, value, type, placeholder, inputMode) {
   return box;
 }
 
+// A list to choose from for one filter, with the value from the address chosen.
 function choiceBox(name, value, choices) {
   const box = make('select');
   box.id = 'filter-' + name;
@@ -107,7 +111,7 @@ function choiceBox(name, value, choices) {
 // Loads the products for these filters (plus the page's fixed ones) into the grid: skeletons first, then the cards.
 // Returns the server's answer. countLine (optional) gets "12 products" or "No products match".
 async function loadProductList(grid, fixed = {}, countLine = null) {
-  showSkeletons(grid, Math.min(LIST_PAGE_SIZE, 8));
+  showSkeletons(grid, LIST_PAGE_SIZE);
   const query = new URLSearchParams({ ...filtersFromAddress(), ...fixed });
   const data = await api('GET', '/api/products?' + query.toString());
   grid.replaceChildren(...data.products.map(productCard));

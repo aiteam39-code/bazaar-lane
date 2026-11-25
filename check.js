@@ -203,6 +203,7 @@ async function measureInChrome(pages, width, height) {
           sticky: header ? getComputedStyle(header).position : null,
           tiles: document.querySelectorAll('.category-tile').length, promos: document.querySelectorAll('.promo-card').length,
           rows: document.querySelectorAll('.category-row:not(.is-loading)').length, hiddenSections: document.querySelectorAll('.will-reveal:not(.is-in)').length,
+          accents: [...document.querySelectorAll('.accent, .ik-atc-accent')].filter((el) => el.offsetParent !== null && (el.matches('button, a, [role=button]') || el.querySelector('button'))).length,
           arrowMoved, small };
       })()`);
       report.push(measured ? { url, ...measured } : { url, error: 'the page could not be measured' });
@@ -214,6 +215,14 @@ async function measureInChrome(pages, width, height) {
     await wait(300);
     fs.rmSync(profile, { recursive: true, force: true });
   }
+}
+
+// Every file in a folder and its sub-folders.
+function listFiles(folder) {
+  return fs.readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(folder, entry.name);
+    return entry.isDirectory() ? listFiles(full) : [full];
+  });
 }
 
 // ---------- Helpers for the checks ----------
@@ -1818,6 +1827,9 @@ async function runChecks() {
   });
 
   await check('PHOTO', 'A seller uploads a JPEG, PNG or WebP photo of at most 2 MB: the server checks its first bytes, saves it under a random name and customers see it; a wrong type, a renamed file, an empty or too big file, another shop\'s product or a visitor are refused', async () => {
+    // The sample photos copied in when the test database was filled are not part of this check: count only new files.
+    const samplePhotos = new Set(fs.existsSync(TEST_UPLOADS) ? fs.readdirSync(TEST_UPLOADS) : []);
+    const newUploads = () => fs.readdirSync(TEST_UPLOADS).filter((name) => !samplePhotos.has(name));
     const pantry = await loginAs(demo('Chilli Lane Pantry').email, demo('Chilli Lane Pantry').password);
     const added = await pantry.call('POST', '/api/seller/products', zzProduct('ZZ Photo Jar'));
     expect(added.status === 201, `the ZZ product should be added, got ${show(added)}`);
@@ -1837,7 +1849,7 @@ async function runChecks() {
         `a ${ending} photo should be saved under a random name, got ${show(answer)}`);
     }
     const saved = db.prepare('SELECT photo FROM products WHERE id = ?').get(id).photo;
-    const files = fs.readdirSync(TEST_UPLOADS);
+    const files = newUploads();
     expect(files.length === 1 && files[0] === saved, `a new photo replaces the old file, got ${files.join(', ')}`);
     const served = await fetch(`${BASE}/uploads/${saved}`);
     expect(served.status === 200 && served.headers.get('content-type') === 'image/jpeg', 'the photo should be served as a picture');
@@ -1859,7 +1871,7 @@ async function runChecks() {
     for (const [answer, status, words, what] of refused) {
       expect(answer.status === status && String(answer.data.error || '').includes(words), `${what} should get ${status}, got ${show(answer)}`);
     }
-    expect(db.prepare('SELECT photo FROM products WHERE id = ?').get(id).photo === saved && fs.readdirSync(TEST_UPLOADS).length === 1,
+    expect(db.prepare('SELECT photo FROM products WHERE id = ?').get(id).photo === saved && newUploads().length === 1,
       'a refused upload must not change the photo or save a file');
     db.prepare("UPDATE products SET deleted = 1 WHERE name = 'ZZ Photo Jar'").run(); // tidy up: the ZZ product leaves the shop
   });
@@ -1976,6 +1988,7 @@ async function runChecks() {
   await check('H4', 'At 390 pixels wide (a phone) the home page and the other customer pages never scroll sideways, the header stays on top, and buttons are at least 44 pixels (measured in a real browser)', async () => {
     const pages = ['/', '/search?search=pickle', '/category/pantry-and-spices', '/store/chilli-lane-pantry', '/cart.html', '/checkout.html'];
     const report = await measureInChrome(pages, 390, 844);
+    state.phoneReport = report; // DS2 reads it
     for (const page of report) {
       expect(page.error === undefined, `${page.url}: ${page.error}`);
       expect(page.scrollWidth <= page.width, `${page.url} is ${page.scrollWidth}px wide at ${page.width}px: it scrolls sideways`);
@@ -2001,6 +2014,71 @@ async function runChecks() {
     } finally {
       for (const id of added) db.prepare('DELETE FROM products WHERE id = ?').run(id); // only the ZZ rows this check added, in its own test database
     }
+  });
+
+  // ---------- The design system pass ----------
+
+  await check('DS1', 'No page, script, style or server message contains an emoji', async () => {
+    const pictograph = /\p{Extended_Pictographic}/u;
+    const files = [...listFiles(path.join(__dirname, 'public')), ...listFiles(path.join(__dirname, 'routes')),
+      ...['mail.js', 'pages.js', 'orderStatus.js', 'payments.js', 'auth.js', 'money.js', 'seasons.js'].map((f) => path.join(__dirname, f))];
+    const found = files.filter((file) => /\.(html|css|js|json)$/.test(file) && pictograph.test(fs.readFileSync(file, 'utf8')));
+    expect(found.length === 0, 'emoji found in ' + found.map((f) => path.relative(__dirname, f)).join(', '));
+  });
+
+  await check('DS2', 'At most one accent (marigold) button is visible on each customer page at a time (home, search, category, shop, bag, checkout, product)', async () => {
+    const product = (await newBrowser().call('GET', '/api/products?limit=1')).data.products[0];
+    const productPage = await measureInChrome([product.url], 390, 844);
+    const pages = [...(state.phoneReport || []), ...productPage];
+    expect(pages.length >= 7, 'the phone layout check ran first');
+    for (const page of pages) expect(page.accents <= 1, `${page.url} shows ${page.accents} accent buttons`);
+  });
+
+  await check('DS3', 'No hand-written colour (hex, rgb or hsl) in the pages, scripts or styles outside the kit\'s tokens and the season files', async () => {
+    const colour = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/;
+    const found = [];
+    for (const file of listFiles(path.join(__dirname, 'public'))) {
+      if (!/\.(html|css|js)$/.test(file) || file.includes(path.sep + 'seasons' + path.sep)) continue;
+      fs.readFileSync(file, 'utf8').split('\n').forEach((line, index) => {
+        if (colour.test(line.replace(/href="#[^"]*"/g, ''))) found.push(`${path.relative(__dirname, file)}:${index + 1}`);
+      });
+    }
+    expect(found.length === 0, 'hand-written colours at ' + found.join(', '));
+  });
+
+  await check('DS4', 'Every price goes through the one money formatter: rupees with Indian grouping (₹1,24,580), never built by hand', async () => {
+    const money = require('./money');
+    expect(money.formatMoney(12458000) === '₹1,24,580' && money.formatMoney(129900) === '₹1,299' && money.formatMoney(49901) === '₹499.01', 'the server formatter writes ₹ with Indian grouping');
+    const handMade = /₹\$\{|['"`]₹['"`]\s*\+|\bRs\.?\s?\$?\{?\d/;
+    const found = [];
+    for (const file of [...listFiles(path.join(__dirname, 'public')), ...listFiles(path.join(__dirname, 'routes')), path.join(__dirname, 'mail.js')]) {
+      if (!/\.js$/.test(file)) continue;
+      fs.readFileSync(file, 'utf8').split('\n').forEach((line, index) => {
+        const code = line.replace(/\/\/.*$/, '');
+        if (handMade.test(code)) found.push(`${path.relative(__dirname, file)}:${index + 1}`);
+      });
+    }
+    expect(found.length === 0, 'money built by hand at ' + found.join(', '));
+    const page = (await newBrowser().call('GET', '/api/products?limit=3')).data.products;
+    expect(page.every((p) => Number.isInteger(p.price)), 'prices reach the pages as whole paise for the formatter');
+  });
+
+  await check('DS5', 'The phone code (OtpInput): a wrong code says how many tries are left, the 5th wrong try locks it (even the right code is refused), and a new code waits 30 seconds', async () => {
+    const browser = newBrowser();
+    const phone = '9000000555';
+    const sent = await browser.call('POST', '/api/checkout/phone-code', { phone });
+    expect(sent.status === 200 && /^\d{6}$/.test(String(sent.data.test_sms || '').replace(/\D/g, '').slice(-6)), 'a test code is shown outside production: ' + show(sent));
+    const code = String(sent.data.test_sms).replace(/\D/g, '').slice(-6);
+    const wrong = code === '000000' ? '111111' : '000000';
+    const first = await browser.call('POST', '/api/checkout/phone-verify', { phone, code: wrong });
+    expect(first.status === 400 && first.data.error === "That code didn't match. 4 tries left.", 'the first wrong try says 4 tries left: ' + show(first));
+    for (let i = 0; i < 3; i += 1) await browser.call('POST', '/api/checkout/phone-verify', { phone, code: wrong });
+    const fifth = await browser.call('POST', '/api/checkout/phone-verify', { phone, code: wrong });
+    expect(fifth.status === 400 && /No tries left/.test(fifth.data.error), 'the 5th wrong try says no tries left: ' + show(fifth));
+    const locked = await browser.call('POST', '/api/checkout/phone-verify', { phone, code });
+    expect(locked.status === 429, 'after 5 wrong tries even the right code is refused: ' + show(locked));
+    const again = await browser.call('POST', '/api/checkout/phone-code', { phone });
+    expect(again.status === 429 && /30 seconds/.test(again.data.error), 'a new code waits 30 seconds: ' + show(again));
   });
 
   await check('X1', 'The season is on inside its dates (1 to 26 December, until 23:59) and off outside them, by itself, with no deploy', async () => {

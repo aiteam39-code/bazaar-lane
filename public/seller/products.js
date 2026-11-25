@@ -78,7 +78,7 @@ function productCard(product) {
   if (product.hidden) card.append(make('p', 'reason', 'Hidden by the admin: ' + product.hidden_reason));
   card.append(stockRow(product));
   card.append(cardMessageBox(product.id));
-  if (canChange) card.append(actionButtons(product, card));
+  if (canChange) card.append(actionButtons(product));
   return card;
 }
 
@@ -109,9 +109,9 @@ function stockRow(product) {
     if (amountBox.value || amountBox.validity.badInput) amountBox.dataset.busy = 'yes';
     else delete amountBox.dataset.busy;
   });
-  const plus = actionButton('+', 'small-button', () => changeStock(product, 'add', amountBox));
+  const plus = iconButton('plus', 'small-button', () => changeStock(product, 'add', amountBox));
   plus.setAttribute('aria-label', 'Add to the stock of ' + product.name);
-  const minus = actionButton('−', 'small-button secondary', () => changeStock(product, 'remove', amountBox));
+  const minus = iconButton('minus', 'small-button secondary', () => changeStock(product, 'remove', amountBox));
   minus.setAttribute('aria-label', 'Take away from the stock of ' + product.name);
   const controls = make('div', 'stock-controls');
   controls.append(amountBox, plus, minus);
@@ -119,15 +119,36 @@ function stockRow(product) {
   return row;
 }
 
-// Edit, Switch off or Switch on, and Delete.
-function actionButtons(product, card) {
+// Edit, Switch off or Switch on, and Delete. Switch off and Delete use the kit's ConfirmButton: the first press asks, the second does it.
+function actionButtons(product) {
   const row = make('div', 'actions');
   row.append(actionButton('Edit', 'secondary', () => startEditing(product)));
   row.append(photoButton(product));
-  if (product.active) row.append(actionButton('Switch off', 'secondary', () => switchProduct(product, 'switch-off')));
-  else if (!product.hidden) row.append(actionButton('Switch on', '', () => switchProduct(product, 'switch-on')));
-  row.append(actionButton('Delete', 'danger', () => askDelete(product, card)));
+  if (product.active) {
+    row.append(confirmButton('Switch off', 'Switch off?', `Press again to hide ${product.name} from customers`, () => switchProduct(product, 'switch-off')));
+  } else if (!product.hidden) {
+    row.append(actionButton('Switch on', '', () => switchProduct(product, 'switch-on')));
+  }
+  row.append(confirmButton('Delete', 'Delete product?', `Press again to delete ${product.name}. Old orders keep its name.`, () => deleteProduct(product)));
   return row;
+}
+
+// The kit's two-step ConfirmButton in its own small box.
+function confirmButton(label, confirmLabel, hint, onConfirm) {
+  const box = make('span', 'confirm-slot');
+  mountKit(box, IK.ConfirmButton, { label, confirmLabel, hint, onConfirm });
+  return box;
+}
+
+// The kit's plus and minus icons (the same lines as its QuantityStepper), added here if common.js does not have them yet.
+KIT_ICONS.plus = KIT_ICONS.plus || ['M5.5 12h13', 'M12 5.5v13'];
+KIT_ICONS.minus = KIT_ICONS.minus || ['M5.5 12h13'];
+
+// A button that shows only a kit icon (its aria-label says what it does).
+function iconButton(iconName, style, onClick) {
+  const button = actionButton('', style, onClick);
+  button.append(kitIcon(iconName));
+  return button;
 }
 
 // "Add photo" or "Change photo": picks a JPEG, PNG or WebP file of at most 2 MB and sends it to the server,
@@ -211,25 +232,17 @@ async function switchProduct(product, action) {
   }
 }
 
-// Delete asks "are you sure?" first, inside the card.
-function askDelete(product, card) {
-  openConfirmBox(card, {
-    question: `Delete ${product.name}? Customers will not see it any more. Old orders keep its name.`,
-    confirmText: 'Yes, delete',
-    askReason: false,
-    onConfirm: async (reason, boxMessage) => {
-      try {
-        const result = await api('DELETE', '/api/seller/products/' + product.id);
-        closeConfirmBoxes();
-        if (editingId === product.id) stopEditing();
-        showMessage(productsMessage, result.message, 'ok');
-        await loadMyProducts();
-      } catch (error) {
-        if (goToLoginIfNeeded(error)) return;
-        showMessage(boxMessage, error.message, 'error');
-      }
-    },
-  });
+// Delete (after the second press of the ConfirmButton): the product is hidden for good, old orders keep its name.
+async function deleteProduct(product) {
+  try {
+    const result = await api('DELETE', '/api/seller/products/' + product.id);
+    if (editingId === product.id) stopEditing();
+    showMessage(productsMessage, result.message, 'ok');
+    await loadMyProducts();
+  } catch (error) {
+    if (goToLoginIfNeeded(error)) return;
+    showCardMessage(product.id, error.message, 'error');
+  }
 }
 
 // Fills the form with a product so the seller can change it. Stock is not in the form: it only changes with + and -.

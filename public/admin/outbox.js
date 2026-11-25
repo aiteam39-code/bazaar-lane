@@ -1,6 +1,7 @@
 // admin/outbox.js - the admin reads the outbox: every email, newest first. Open one to read it.
 // Refreshes every 5 seconds (only redraws when something new arrived).
 
+// Loads the outbox and draws the list of emails.
 async function loadEmails() {
   try {
     const data = await api('GET', '/api/admin/emails');

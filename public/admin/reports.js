@@ -4,6 +4,7 @@
 const reportsMessage = document.getElementById('message');
 let reportsTab = 'open';
 
+// Loads the reports in the current tab and draws them.
 async function loadReports() {
   try {
     const data = await api('GET', '/api/admin/reports?tab=' + reportsTab);
@@ -23,6 +24,7 @@ async function loadReports() {
   }
 }
 
+// One report: product, shop, time, reason, and Hide the product (ConfirmButton) or Dismiss while open.
 function reportCard(report) {
   const card = make('article', 'card');
   card.append(make('h2', '', `${report.product_name} · ${report.shop_name}`));
@@ -41,6 +43,7 @@ function reportCard(report) {
   return card;
 }
 
+// Sends Hide or Dismiss for one report, then draws the list again.
 async function reportAction(id, action) {
   try {
     const answer = await api('POST', `/api/admin/reports/${id}/${action}`);

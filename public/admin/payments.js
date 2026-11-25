@@ -5,6 +5,11 @@
 const paymentsMessage = document.getElementById('message');
 let codOn = true;
 
+// Plain words for a payment's status and a part's payment state (never the database codes).
+const PAYMENT_STATUS_WORDS = { created: 'Waiting for payment', paid: 'Paid', failed: 'Failed' };
+const PART_PAID_WORDS = { unpaid: 'Not paid yet', paid: 'Paid', refunded: 'Refunded' };
+
+// Loads the payments, the refunds still due and the cash on delivery switch, and draws them.
 async function loadPayments() {
   try {
     const data = await api('GET', '/api/admin/payments');
@@ -28,7 +33,7 @@ async function loadPayments() {
 function paymentCard(payment) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
-  top.append(make('h3', '', `${payment.code} · ${formatMoney(payment.amount)}`), make('span', 'badge ' + statusColour(payment.status), payment.status));
+  top.append(make('h3', '', `${payment.code} · ${formatMoney(payment.amount)}`), make('span', 'badge ' + statusColour(payment.status), PAYMENT_STATUS_WORDS[payment.status] || payment.status));
   card.append(top);
   card.append(make('p', 'muted small', `${payment.customer_name} · ${payment.provider === 'fake' ? 'FakePay' : 'Razorpay test'} · ${formatDateTime(payment.created_at)} · ${payment.order_ref || ''}${payment.paid_ref ? ' / ' + payment.paid_ref : ''}`));
   const table = make('table', 'split');
@@ -39,7 +44,7 @@ function paymentCard(payment) {
     const row = make('tr');
     row.append(make('td', '', part.shop_name), make('td', '', formatMoney(part.total)),
       make('td', '', `${formatMoney(part.commission)} (${part.commission_bps / 100}%)`), make('td', '', formatMoney(part.shop_share)),
-      make('td', '', `${part.status}, ${part.payment_status}`));
+      make('td', '', `${ORDER_STATUS_WORDS[part.status] || part.status}, ${PART_PAID_WORDS[part.payment_status] || part.payment_status}`));
     table.append(row);
   }
   const scroll = make('div', 'table-scroll');
@@ -51,6 +56,7 @@ function paymentCard(payment) {
   return card;
 }
 
+// The badge colour for a payment's status (the badge also has words, so colour is never alone).
 function statusColour(status) {
   return status === 'paid' ? 'badge-active' : status === 'failed' ? 'badge-rejected' : 'badge-pending';
 }
@@ -60,7 +66,7 @@ function showRefundDue(parts) {
   document.getElementById('refund-due-box').classList.toggle('hidden', parts.length === 0);
   document.getElementById('refund-due').replaceChildren(...parts.map((part) => {
     const row = make('div', 'problem-row');
-    row.append(make('p', '', `${part.code} · ${part.shop_name} · ${part.status} · ${formatMoney(part.amount)}`));
+    row.append(make('p', '', `${part.code} · ${part.shop_name} · ${ORDER_STATUS_WORDS[part.status] || part.status} · ${formatMoney(part.amount)}`));
     const retry = make('button', 'secondary', 'Try the refund again');
     retry.type = 'button';
     retry.addEventListener('click', async () => {

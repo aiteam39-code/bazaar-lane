@@ -5,6 +5,7 @@
 const helpMessage = document.getElementById('message');
 let helpTab = 'open';
 
+// Loads the help requests in the current tab and draws the tabs and the list.
 async function loadHelp() {
   try {
     const data = await api('GET', '/api/admin/help?tab=' + helpTab);
@@ -24,6 +25,7 @@ async function loadHelp() {
   }
 }
 
+// One help request: order, shop, customer, message, the shop's reply, and the resolve form (or the outcome).
 function requestCard(request) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
@@ -55,9 +57,27 @@ function requestCard(request) {
   const box = make('div', 'message');
   const resolve = make('button', '', 'Resolve');
   resolve.type = 'submit';
-  form.append(box, resolve);
-  form.addEventListener('submit', async (event) => {
+  // With "Also cancel" ticked, Resolve becomes the kit's two-step ConfirmButton ("Cancel and refund?").
+  const confirmResolve = make('span', 'hidden');
+  if (cancelBox) mountKit(confirmResolve, IK.ConfirmButton, {
+    label: 'Resolve and cancel', confirmLabel: request.payment_status === 'paid' ? 'Cancel and refund?' : 'Cancel this part?',
+    hint: 'Press again to resolve, cancel this part and refund it if it was paid',
+    onConfirm: () => sendResolve(),
+  });
+  if (cancelBox) {
+    cancelBox.addEventListener('change', () => {
+      resolve.classList.toggle('hidden', cancelBox.checked);
+      confirmResolve.classList.toggle('hidden', !cancelBox.checked);
+    });
+  }
+  form.append(box, resolve, confirmResolve);
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
+    if (cancelBox && cancelBox.checked) return; // cancelling needs the ConfirmButton's second press
+    sendResolve();
+  });
+  // Sends the resolution (and the cancel, when ticked) to the server.
+  async function sendResolve() {
     try {
       const answer = await api('POST', `/api/admin/help/${request.id}/resolve`, { resolution: note.value, cancel: Boolean(cancelBox && cancelBox.checked) });
       showMessage(helpMessage, answer.message, 'ok');
@@ -66,7 +86,7 @@ function requestCard(request) {
     } catch (error) {
       showMessage(box, error.message, 'error');
     }
-  });
+  }
   card.append(form);
   return card;
 }

@@ -1,6 +1,6 @@
 // seasons/christmas.js - the Christmas season's script, loaded ONLY while the season is on (the server writes it into
 // the page). It adds what CSS cannot: gentle snowfall on one canvas (never blocks a click, paused when the tab is
-// hidden, off with reduced motion, with a "Snow" switch in the footer), the gift-sack bag icon, the warm words for the
+// hidden, off with reduced motion, with a "Show snow" switch in the footer), the gift-sack bag icon, the warm words for the
 // toast and the order tracker, a soft bell instead of the kit's "add" sound (only if the shopper turned sound on),
 // and on the home page the Christmas hero band and gift rows chosen by real prices and categories.
 // Delete this file (with christmas.css) and the store is simply normal.
@@ -16,9 +16,10 @@
       added: words.added,
       // One plain, warm sentence for the order tracker, or null to keep the normal one.
       sentence(part) {
-        const template = words.sentences[part.status];
+        // "wrapped" only when this part really paid for gift wrap; otherwise the plain sentence.
+        const template = (part.gift_wrap > 0 && words.sentences[part.status + '_wrapped']) || words.sentences[part.status];
         if (!template) return null;
-        const item = part.items[0] ? part.items[0].name.toLowerCase() : 'order';
+        const item = part.items[0] ? part.items[0].name : 'order'; // the name exactly as the seller wrote it
         return template.replace('{shop}', part.shop_name).replace('{item}', item).replace('{courier}', part.courier || 'the courier');
       },
     };
@@ -134,18 +135,22 @@
   }
   lessMotion.addEventListener('change', () => (snowWanted() ? startSnow() : stopSnow()));
 
-  // The "Snow: on / off" switch in the footer, remembered in this browser.
+  // The "Show snow" switch in the footer (one fixed label, its state in aria-pressed), remembered in this browser.
   function snowSwitch() {
     const extras = document.querySelector('.footer-extras');
     if (!extras || extras.querySelector('[data-snow-switch]')) return;
-    const button = make('button', 'secondary', '');
+    const wrap = make('div', 'footer-switch xmas-snow-switch');
+    const button = make('button', 'secondary', 'Show snow');
     button.type = 'button';
     button.dataset.snowSwitch = 'yes';
+    const note = make('p', 'xmas-snow-note', 'Snow stays off because your device asks for less motion.');
+    note.id = 'xmas-snow-note';
     const draw = () => {
-      const on = snowWanted();
-      button.textContent = lessMotion.matches ? 'Snow: off (reduce motion)' : on ? 'Snow: on' : 'Snow: off';
-      button.setAttribute('aria-pressed', String(on));
+      button.setAttribute('aria-pressed', String(snowWanted()));
       button.disabled = lessMotion.matches;
+      note.hidden = !lessMotion.matches;
+      if (lessMotion.matches) button.setAttribute('aria-describedby', note.id);
+      else button.removeAttribute('aria-describedby');
     };
     button.addEventListener('click', () => {
       try { localStorage.setItem(SNOW_KEY, snowWanted() ? 'off' : 'on'); } catch (e) { /* the switch still works on this page */ }
@@ -154,13 +159,15 @@
     });
     lessMotion.addEventListener('change', draw);
     draw();
-    extras.append(button);
+    wrap.append(button, note);
+    extras.append(wrap);
   }
 
   // ---------- The home page: the hero band and the gift rows ----------
+  // Each heading says exactly what its query finds (prices in whole rupees, both ends included).
   const ROWS = [
-    ['Gifts under ₹499', 'giftable=1&price_max=499&sort=price_asc&limit=4'],
-    ['Gifts under ₹999', 'giftable=1&price_min=500&price_max=999&sort=price_asc&limit=4'],
+    ['Gifts up to ' + formatMoney(49900), 'giftable=1&price_max=499&sort=price_asc&limit=4'],
+    ['Gifts from ' + formatMoney(50000) + ' to ' + formatMoney(99900), 'giftable=1&price_min=500&price_max=999&sort=price_asc&limit=4'],
     ['Gifts for the kitchen', 'giftable=1&category=home-and-kitchen&limit=4'],
   ];
   async function dressTheHomePage() {
@@ -169,7 +176,7 @@
     // The banner (still the page's one H1 and one accent) speaks for Christmas and leads to the gift collection.
     banner.classList.add('is-christmas');
     document.getElementById('banner-title').textContent = 'Christmas gifts from independent makers';
-    document.getElementById('banner-line').textContent = 'Hand-made pickles, clay lamps and woven stoles, wrapped by the people who made them.';
+    document.getElementById('banner-line').textContent = 'Hand-made pickles, clay pots and woven stoles from independent makers. Many shops gift wrap at checkout.';
     const shop = document.getElementById('banner-button');
     shop.textContent = 'Shop gifts';
     shop.href = '/christmas';

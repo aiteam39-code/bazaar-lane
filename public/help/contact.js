@@ -13,5 +13,6 @@ document.getElementById('contact-form').addEventListener('submit', async (event)
     event.target.reset();
   } catch (error) {
     showMessage(note, error.message, 'error');
+    if (window.IK && IK.sound) IK.sound.play('error'); // the kit's error cue (silent unless sound is switched on)
   }
 });

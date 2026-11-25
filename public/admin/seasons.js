@@ -4,6 +4,7 @@
 
 const seasonsMessage = document.getElementById('message');
 
+// Loads the seasons and draws one card per season.
 async function loadSeasons() {
   try {
     const data = await api('GET', '/api/admin/seasons');
@@ -16,6 +17,7 @@ async function loadSeasons() {
   }
 }
 
+// One season: its state, dates, Switched on, Save and Preview.
 function seasonCard(season) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
@@ -56,6 +58,7 @@ function seasonCard(season) {
   return card;
 }
 
+// Adds one labelled box for a date and time ("YYYY-MM-DD HH:MM") and returns it.
 function field(labelText, id, value) {
   const wrap = make('div', 'field');
   const label = make('label', '', labelText);

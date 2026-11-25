@@ -1,14 +1,14 @@
 // admin/shops.js - the admin's Shops page: tabs Pending, Active, Suspended, Rejected, and the buttons for each shop.
-// Reject and Suspend open a reason box first. The page refreshes every 5 seconds, but not while a reason box is open.
+// Reject and Suspend open a reason box first, then confirm with the kit's ConfirmButton. The page refreshes every 5 seconds, but not while a reason box is open.
 
 // The buttons each tab shows.
 const SHOP_BUTTONS = {
   pending: [
     { action: 'approve', label: 'Approve' },
-    { action: 'reject', label: 'Reject', needsReason: true, style: 'danger' },
+    { action: 'reject', label: 'Reject', needsReason: true, style: 'secondary' },
   ],
   active: [
-    { action: 'suspend', label: 'Suspend', needsReason: true, style: 'danger' },
+    { action: 'suspend', label: 'Suspend', needsReason: true, style: 'secondary' },
   ],
   suspended: [
     { action: 'reactivate', label: 'Reactivate' },
@@ -101,9 +101,12 @@ function openReasonBox(card, shop, button) {
   label.htmlFor = input.id;
   const boxMessage = make('div', 'message');
 
-  const confirm = make('button', 'danger', button.label + ' shop');
-  confirm.type = 'button';
-  confirm.addEventListener('click', () => doShopAction(shop, button.action, input.value, boxMessage));
+  // The kit's two-step button: "Reject shop" then "Reject shop?" (the same for Suspend).
+  const confirm = make('span');
+  mountKit(confirm, IK.ConfirmButton, {
+    label: button.label + ' shop', confirmLabel: button.label + ' shop?', hint: `Press again to ${button.label.toLowerCase()} ${shop.shop_name}`,
+    onConfirm: () => doShopAction(shop, button.action, input.value, boxMessage),
+  });
   const cancel = make('button', 'secondary', 'Cancel');
   cancel.type = 'button';
   cancel.addEventListener('click', closeReasonBoxes);

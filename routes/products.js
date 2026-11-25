@@ -61,7 +61,7 @@ router.put('/api/seller/products/:id', auth.requireSeller('active'), (req, res) 
   res.json({ ok: true, message: `${form.name} was saved.` });
 });
 
-// Stock +: adds the amount (1 to 100,000). The stock can be at most 1,000,000.
+// Stock +: adds the amount (1 to 1,00,000). The stock can be at most 10,00,000.
 router.post('/api/seller/products/:id/stock/add', auth.requireSeller('active'), (req, res) => {
   const product = findOwnProduct(req, req.params.id);
   const amount = auth.readWholeNumber((req.body || {}).amount, 'Amount', 1, MAX_STOCK_CHANGE);
@@ -69,7 +69,11 @@ router.post('/api/seller/products/:id/stock/add', auth.requireSeller('active'), 
     UPDATE products SET stock = stock + ?
     WHERE id = ? AND seller_id = ? AND stock + ? <= ?
     RETURNING stock`).get(amount, product.id, req.shop.id, amount, MAX_STOCK);
-  if (!row) throw new HttpError(400, `Stock cannot be more than ${MAX_STOCK}.`);
+  if (!row) {
+    const now = db.prepare('SELECT stock FROM products WHERE id = ?').get(product.id).stock;
+    const most = MAX_STOCK.toLocaleString('en-IN');
+    throw new HttpError(400, `Stock can be at most ${most}. ${product.name} has ${now.toLocaleString('en-IN')} now, so add a smaller amount.`);
+  }
   res.json({ ok: true, stock: row.stock, message: `Added ${amount}. ${product.name} now has ${row.stock} in stock.` });
 });
 

@@ -13,7 +13,7 @@ function myOrderCard(order) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
   top.append(make('h2', '', `Order ${order.code}`));
-  if (Number.isSafeInteger(order.total)) top.append(make('strong', '', formatMoney(order.total)));
+  if (Number.isSafeInteger(order.total)) top.append(make('strong', 'price', formatMoney(order.total)));
   card.append(top);
   if (order.at) card.append(make('p', 'muted', 'Placed ' + formatDateTime(order.at)));
   const link = make('a', 'button', 'Track this order');

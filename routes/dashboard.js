@@ -127,28 +127,29 @@ router.get('/api/seller/dashboard', auth.requireSeller('active', 'suspended'), (
   });
 });
 
-// The shop's delivered sales for each of the last 6 weeks, split into its 2 biggest categories and "Other".
+// The shop's delivered sales for each of the last 6 weeks, split into new buyers and repeat buyers.
+// A buyer is "repeat" when the same email already had an earlier order with this shop that was not
+// cancelled, rejected or left unpaid. There is only one sales channel, so this is the only honest split.
 function weeklySales(shopId) {
   const rows = db.prepare(`
-    SELECT ${REACHED('delivered')} AS at, categories.name AS category, order_items.line_total AS amount
-    FROM order_items JOIN seller_orders ON seller_orders.id = order_items.seller_order_id
-    JOIN products ON products.id = order_items.product_id JOIN categories ON categories.id = products.category_id
+    SELECT ${REACHED('delivered')} AS at, seller_orders.items_total + seller_orders.shipping + seller_orders.gift_wrap AS amount,
+      EXISTS (SELECT 1 FROM seller_orders AS earlier JOIN customer_orders AS earlier_order ON earlier_order.id = earlier.customer_order_id
+        WHERE earlier.seller_id = seller_orders.seller_id AND earlier.id < seller_orders.id
+        AND earlier.status NOT IN ('cancelled', 'rejected', 'pending_payment')
+        AND LOWER(earlier_order.email) = LOWER(customer_orders.email)) AS repeat_buyer
+    FROM seller_orders JOIN customer_orders ON customer_orders.id = seller_orders.customer_order_id
     WHERE seller_orders.seller_id = ? AND seller_orders.status = 'delivered'`).all(shopId);
-  const totals = {};
-  for (const row of rows) totals[row.category] = (totals[row.category] || 0) + row.amount;
-  const top = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([name]) => name);
-  const series = [...top.map((name, i) => ({ key: 'c' + i, label: name, tone: i + 1 })), { key: 'other', label: 'Other', tone: 3 }];
+  const series = [{ key: 'new', label: 'New buyers', tone: 1 }, { key: 'repeat', label: 'Repeat buyers', tone: 3 }];
   const thisWeekStart = Date.parse(startOfWeek());
   const bars = [];
   for (let week = 5; week >= 0; week -= 1) {
     const from = thisWeekStart - week * 7 * 86400000;
     const to = from + 7 * 86400000;
-    const values = Object.fromEntries(series.map((s) => [s.key, 0]));
+    const values = { new: 0, repeat: 0 };
     for (const row of rows) {
       const at = Date.parse(row.at);
       if (at < from || at >= to) continue;
-      const index = top.indexOf(row.category);
-      values[index === -1 ? 'other' : 'c' + index] += row.amount / 100;
+      values[row.repeat_buyer ? 'repeat' : 'new'] += row.amount / 100;
     }
     const label = new Date(from).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
     bars.push({ label, values });

@@ -1,7 +1,8 @@
-// admin/messages.js - the contact form's messages (not handled first), each with Handled. Refreshes every 5 seconds.
+// admin/messages.js - the contact form's messages (not handled first), each with Mark handled. Refreshes every 5 seconds.
 
 const messagesNote = document.getElementById('message');
 
+// Loads the contact messages and draws them.
 async function loadMessages() {
   try {
     const data = await api('GET', '/api/admin/messages');
@@ -15,13 +16,14 @@ async function loadMessages() {
   }
 }
 
+// One message: name, email, time, the words, and Mark handled while it is still open.
 function messageCard(item) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
   top.append(make('h2', '', item.name), make('span', item.handled ? 'badge badge-active' : 'badge badge-pending', item.handled ? 'Handled' : 'To answer'));
   card.append(top, make('p', 'small muted', `${item.email} · ${formatDateTime(item.created_at)}`), make('p', 'description', item.message));
   if (!item.handled) {
-    const done = make('button', 'secondary', 'Handled');
+    const done = make('button', 'secondary', 'Mark handled');
     done.type = 'button';
     done.addEventListener('click', async () => {
       try {

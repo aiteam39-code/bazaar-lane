@@ -1,6 +1,6 @@
 // seller/orders.js - the seller's own orders, in tabs: New (Accept or Reject with a reason), To pack (Packed, then
 // Shipped with the courier and tracking number), Shipped (Delivered), and Done. Cash on delivery orders also get
-// Cash collected. Each order shows the customer's name, phone and address, the products, the totals, the "Ship by" date
+// Mark cash collected. Each order shows the customer's name, phone and address, the products, the totals, the "Ship by" date
 // (in red with the word LATE when it has passed) and any help request, with one reply.
 // The server checks every move again (only this shop's orders, only allowed steps).
 // Refreshes every 5 seconds, but never while someone is typing; a new order shows a toast.
@@ -96,11 +96,11 @@ function actionRow(order, card) {
     row.append(button('Accept', '', () => move(order, 'accept')));
     row.append(button('Reject', 'secondary', () => askReason(order, card)));
   }
-  if (order.status === 'accepted') row.append(button('Packed', '', () => move(order, 'pack')));
-  if (order.status === 'packed') row.append(button('Shipped', '', () => askShipping(order, card)));
-  if (order.status === 'shipped') row.append(button('Delivered', '', () => move(order, 'deliver')));
+  if (order.status === 'accepted') row.append(button('Mark packed', '', () => move(order, 'pack')));
+  if (order.status === 'packed') row.append(button('Mark shipped', '', () => askShipping(order, card)));
+  if (order.status === 'shipped') row.append(button('Mark delivered', '', () => move(order, 'deliver')));
   if (order.payment_method === 'cod' && order.payment_status === 'unpaid' && ['shipped', 'delivered'].includes(order.status)) {
-    row.append(button('Cash collected', 'secondary', () => move(order, 'cash-collected')));
+    row.append(button('Mark cash collected', 'secondary', () => move(order, 'cash-collected')));
   }
   return row;
 }

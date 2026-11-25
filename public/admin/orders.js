@@ -36,7 +36,7 @@ function showCounts(counts) {
 function orderCard(order) {
   const card = make('article', 'card');
   const top = make('div', 'card-top');
-  top.append(make('h2', '', order.code), make('strong', '', formatMoney(order.grand_total)));
+  top.append(make('h2', '', order.code), make('strong', 'row-price', formatMoney(order.grand_total)));
   card.append(top);
   card.append(make('p', 'muted', `${formatDateTime(order.created_at)} · ${PAYMENT_WORDS[order.payment_method] || order.payment_method}`
     + ` · items ${formatMoney(order.items_total)} + shipping ${formatMoney(order.shipping_total)}`));
@@ -68,7 +68,7 @@ function partBox(part) {
   return box;
 }
 
-// Cancel (reason first, then "Cancel order?") and Mark delivered.
+// Cancel (reason first, then "Cancel this part?") and Mark delivered.
 function adminActions(part, box) {
   const row = make('div', 'actions');
   const note = make('div', 'message');
@@ -82,7 +82,7 @@ function adminActions(part, box) {
     reason.addEventListener('input', () => { if (reason.value) reason.dataset.busy = 'yes'; else delete reason.dataset.busy; });
     const confirm = make('span');
     mountKit(confirm, IK.ConfirmButton, {
-      label: 'Cancel this part', confirmLabel: 'Cancel order?', hint: 'Press again to cancel this part and refund it if it was paid',
+      label: 'Cancel this part', confirmLabel: 'Cancel this part?', hint: 'Press again to cancel this part and refund it if it was paid',
       onConfirm: () => adminMove(`/api/admin/orders/${part.id}/cancel`, { reason: reason.value }, note),
     });
     row.append(label, reason, confirm);
@@ -98,6 +98,7 @@ function adminActions(part, box) {
   return wrap;
 }
 
+// Sends one admin move (cancel or deliver), then shows the answer and draws the list again.
 async function adminMove(address, body, note) {
   try {
     const answer = await api('POST', address, body);

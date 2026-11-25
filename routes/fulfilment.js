@@ -97,10 +97,10 @@ router.post('/api/admin/orders/:id/deliver', auth.requireRole('admin'), async (r
 
 // Customer (with the tracking link): ask for help with one shop's part (up to 2000 characters, one open request per part).
 router.post('/api/track/:token/parts/:partId/help', (req, res) => {
-  const order = findOrderByToken(req.params.token);
+  const order = findOrderByToken(req.params.token, NOT_FOUND_IN_FORM);
   const part = db.prepare('SELECT * FROM seller_orders WHERE id = ? AND customer_order_id = ?').get(auth.readId(req.params.partId), order.id);
-  if (!part) throw new HttpError(404, 'That part of the order does not exist.');
-  if (part.status === 'pending_payment') throw new HttpError(400, 'This part is still waiting for payment.');
+  if (!part) throw new HttpError(404, 'That part of the order does not exist. Reload this page and try again.');
+  if (part.status === 'pending_payment') throw new HttpError(400, 'This part is still waiting for payment. Finish paying, then ask for help.');
   const message = readLongText((req.body || {}).message, 'Please say what went wrong');
   try {
     db.prepare("INSERT INTO help_requests (seller_order_id, message, status, created_at) VALUES (?, ?, 'open', ?)").run(part.id, message, nowIso());
@@ -248,7 +248,7 @@ router.get('/api/track/:token', (req, res) => {
 // The customer cancels one shop's part while it is still placed. It goes through the status function,
 // which puts the stock back. The other shops' parts are not touched.
 router.post('/api/track/:token/parts/:partId/cancel', async (req, res) => {
-  const order = findOrderByToken(req.params.token);
+  const order = findOrderByToken(req.params.token, NOT_FOUND_IN_FORM);
   const part = changeStatus(auth.readId(req.params.partId), 'cancelled', { role: 'customer', customerOrderId: order.id });
   mail.sendPartStopped(part.id);
   const refunded = await payments.refundIfPaid(part.id);
@@ -265,11 +265,15 @@ router.get('/api/admin/orders', auth.requireRole('admin'), (req, res) => {
 
 // ---------- Helpers ----------
 
+// What a form on the tracking page says when its link is wrong: what happened and what to do next.
+const NOT_FOUND_IN_FORM = 'Order not found. Open the link from your order email again.';
+
 // The order with this tracking token, or 404 "Order not found." (a token is always 64 letters a-f and digits).
-function findOrderByToken(token) {
+// notFoundText lets a form on the tracking page say what to do next.
+function findOrderByToken(token, notFoundText = 'Order not found.') {
   const looksRight = typeof token === 'string' && /^[a-f0-9]{64}$/.test(token);
   const order = looksRight ? db.prepare('SELECT * FROM customer_orders WHERE tracking_token = ?').get(token) : null;
-  if (!order) throw new HttpError(404, 'Order not found.');
+  if (!order) throw new HttpError(404, notFoundText);
   return order;
 }
 

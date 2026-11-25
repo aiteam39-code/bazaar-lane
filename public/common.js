@@ -14,7 +14,7 @@ async function api(method, url, body) {
   try {
     response = await fetch(url, options);
   } catch (e) {
-    const error = new Error('Cannot reach the server right now. Please check that the app is running.');
+    const error = new Error(`Cannot reach ${siteName()} right now. Check your connection and try again.`);
     error.status = 0;
     throw error;
   }
@@ -148,18 +148,21 @@ function saveCart(cart) {
   updateCartBadges();
 }
 
-// Adds one of a product to the cart (at most 20). Returns how many are in the cart now, or 0 when the cart is full.
+// Adds one of a product to the cart (at most 20). Returns { quantity, added }: how many are in the cart now, and
+// whether one was really added. When the cart already holds 50 different products, quantity is 0 and added is false;
+// when it already holds 20 of this product, added is false.
 function addToCart(productId) {
   const cart = readCart();
   let line = cart.find((l) => l.product_id === productId);
   if (!line) {
-    if (cart.length >= MOST_LINES) return 0;
+    if (cart.length >= MOST_LINES) return { quantity: 0, added: false };
     line = { product_id: productId, quantity: 0 };
     cart.push(line);
   }
-  line.quantity = Math.min(MOST_OF_ONE, line.quantity + 1);
+  if (line.quantity >= MOST_OF_ONE) return { quantity: line.quantity, added: false };
+  line.quantity += 1;
   saveCart(cart);
-  return line.quantity;
+  return { quantity: line.quantity, added: true };
 }
 
 // How many items are in the cart, for the badge in the header.
@@ -219,48 +222,10 @@ function orderStatusBadge(status) {
   return make('span', 'badge status-' + status, ORDER_STATUS_WORDS[status] || status);
 }
 
-// Opens a small box under a card: a question, a reason box (if askReason), a red confirm button and a button that
-// closes the box (keepText, "Cancel" unless the question is itself about cancelling).
-// Used for Hide (needs a reason), Delete and Cancel ("are you sure?"). While it is open, the 5-second refresh waits.
-// onConfirm(reason, boxMessage) does the work; the confirm button is switched off while it runs.
-function openConfirmBox(card, { question, confirmText, askReason, onConfirm, keepText = 'Cancel' }) {
-  closeConfirmBoxes();
-  const box = make('div', 'reason-box confirm-box');
-  box.dataset.busy = 'yes';
-  let input = null;
-  if (askReason) {
-    input = make('textarea');
-    input.id = 'confirm-box-reason';
-    input.rows = 3;
-    input.maxLength = 200;
-    const label = make('label', '', question);
-    label.htmlFor = input.id;
-    box.append(label, input);
-  } else {
-    box.append(make('p', 'confirm-question', question));
-  }
-  const boxMessage = make('div', 'message');
-  const confirm = make('button', 'danger', confirmText);
-  confirm.type = 'button';
-  confirm.addEventListener('click', async () => {
-    confirm.disabled = true;
-    try {
-      await onConfirm(input ? input.value : '', boxMessage);
-    } finally {
-      confirm.disabled = false;
-    }
-  });
-  const cancel = make('button', 'secondary', keepText);
-  cancel.type = 'button';
-  cancel.addEventListener('click', closeConfirmBoxes);
-  const row = make('div', 'actions');
-  row.append(confirm, cancel);
-  box.append(boxMessage, row);
-  card.append(box);
-  (input || cancel).focus();
-}
+// A plain "are you sure?" uses the kit's ConfirmButton: mountConfirm() in kit.js. A page that needs a typed reason
+// (like the admin's Hide) builds its own box with the class confirm-box and data-busy="yes", so the 5-second refresh waits.
 
-// Closes any open confirm box.
+// Closes any open reason box (class confirm-box).
 function closeConfirmBoxes() {
   document.querySelectorAll('.confirm-box').forEach((box) => box.remove());
 }
@@ -316,14 +281,20 @@ async function fillSiteName() {
   }
 }
 
-// Adds a shopping-bag icon to the browser tab.
+// Adds a shopping-bag icon to the browser tab, drawn in the theme's ink colour (the kit's --ink token, read from
+// the page, so no colour is written here). It is drawn again when the theme changes.
 function addTabIcon() {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#1c1a17" stroke-width="1.75"'
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || 'currentColor';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${ink}" stroke-width="1.75"`
     + ' stroke-linecap="round" stroke-linejoin="round">' + KIT_ICONS.bag.map((d) => `<path d="${d}"/>`).join('') + '</svg>';
-  const link = document.createElement('link');
-  link.rel = 'icon';
+  let link = document.querySelector('link[data-tab-icon]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    link.dataset.tabIcon = '';
+    document.head.append(link);
+  }
   link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
-  document.head.append(link);
 }
 
 // Makes every button marked data-logout log the person out and go to the login page.
@@ -356,7 +327,8 @@ window.addEventListener('storage', (event) => {
 // ---------- The Interaction Kit's look (kit/README.md) ----------
 
 // The kit's "night" theme while the computer is in dark mode, else "lane".
-// A choice saved with the footer's Theme switch (bazaarTheme) wins over the computer's setting.
+// A choice saved with the footer's Theme switch (bazaarTheme: 'lane' or 'night') wins over the computer's setting.
+// Anything that must follow the theme (the tab icon, the footer switch) listens for the 'bazaar-theme' event.
 let darkModeWatched = false;
 function followDarkMode() {
   const dark = window.matchMedia('(prefers-color-scheme: dark)');
@@ -364,6 +336,8 @@ function followDarkMode() {
     let chosen = '';
     try { chosen = localStorage.getItem('bazaarTheme') || ''; } catch (e) { chosen = ''; }
     document.documentElement.dataset.theme = chosen === 'lane' || chosen === 'night' ? chosen : dark.matches ? 'night' : 'lane';
+    if (document.head && document.querySelector('link[data-tab-icon]')) addTabIcon();
+    document.dispatchEvent(new CustomEvent('bazaar-theme'));
   };
   apply();
   if (!darkModeWatched) dark.addEventListener('change', apply);
@@ -402,10 +376,11 @@ function fillIcons() {
 }
 
 // A product's picture (4:5): its photo, or the kit's placeholder art (IK.demo.art) when it has none yet.
-// The product's name always comes right after it, so the picture itself is not read out.
+// Its text label for screen readers is the product's name (left empty only when the name is not known).
 function productPicture(product, className) {
   const picture = make('img', className);
   picture.alt = '';
+  if (product.name) picture.alt = product.name;
   picture.loading = 'lazy';
   const source = product.photo_url || placeholderArt(product.id || product.product_id);
   if (source) picture.src = source;

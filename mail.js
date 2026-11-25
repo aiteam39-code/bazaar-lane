@@ -33,7 +33,9 @@ function seasonSentence(which, part) {
   if (!season) return null;
   try {
     const words = JSON.parse(fs.readFileSync(path.join(SEASON_FOLDER, season.key + '-words.json'), 'utf8'));
-    const template = words.email && words.email[which];
+    const email = words.email || {};
+    // "wrapped" only when this part really paid for gift wrap; otherwise the plain sentence.
+    const template = (part.gift_wrap > 0 && email[which + '_wrapped']) || email[which];
     return template ? template.replace('{shop}', part.shop_name).replace('{courier}', part.courier || 'the courier') : null;
   } catch (e) {
     return null; // no words file: the normal sentence
@@ -85,7 +87,7 @@ function sendOrderConfirmation(customerOrderId) {
     '',
     ...parts.flatMap((part) => [...partLines(part), '']),
     `Items: ${formatMoney(order.items_total)}`,
-    `Shipping: ${formatMoney(order.shipping_total)}`,
+    `Shipping: ${order.shipping_total === 0 ? 'free' : formatMoney(order.shipping_total)}`,
     order.gift_wrap_total ? `Gift wrap: ${formatMoney(order.gift_wrap_total)}` : null,
     `Grand total: ${formatMoney(order.grand_total)} (${paidHow(order.payment_method)})`,
     '',

@@ -4,6 +4,7 @@
 
 const dashboardMessage = document.getElementById('message');
 
+// Loads the dashboard numbers and draws every part of it.
 async function loadDashboard() {
   try {
     const data = await api('GET', '/api/admin/dashboard');
@@ -22,6 +23,7 @@ async function loadDashboard() {
   }
 }
 
+// Draws the main number tiles (a red tile also says a word).
 function showTiles(data) {
   const money = (paise) => ({ value: paise / 100, money: true });
   const wait = data.oldest_wait_minutes;
@@ -56,17 +58,20 @@ function tile(label, number, alertWord, note) {
   return box;
 }
 
+// Draws one tile per seller order status.
 function showStatusTiles(byStatus) {
   document.getElementById('status-tiles').replaceChildren(...Object.entries(byStatus).map(([status, count]) =>
     tile(ORDER_STATUS_WORDS[status] || status, { value: count })));
 }
 
+// Draws a top-5 list (shops or categories) into the list with this id.
 function showRanks(id, rows) {
   const list = document.getElementById(id);
   list.replaceChildren(...rows.map((row) => make('li', '', `${row.name} · ${formatMoney(row.sales)}`)));
   if (rows.length === 0) list.replaceChildren(make('li', 'muted', 'No delivered sales this week yet.'));
 }
 
+// Draws the big links with their badges (shops waiting, open help, open reports).
 function showLinks(data) {
   const links = [
     ['Shops', '/admin/shops.html', data.shops_waiting, 'waiting'], ['Products', '/admin/products.html'], ['Orders', '/admin/orders.html'],

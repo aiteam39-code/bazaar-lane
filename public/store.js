@@ -11,12 +11,16 @@ let storeCarousel = null;
 
 // Asks the server for the shop and the products customers may see.
 async function loadShop() {
+  const loading = document.getElementById('loading-cards');
+  showSkeletons(loading, 4); // a row of SkeletonCards while the shop loads
   try {
     const data = await api('GET', '/api/store/' + encodeURIComponent(shopAddress));
+    loading.remove();
     shopProducts = data.products;
     showShop(data.shop);
     showChosenCategory(false);
   } catch (error) {
+    loading.remove();
     if (error.status === 404) return showShopNotAvailable();
     showMessage(document.getElementById('message'), error.message, 'error');
   }

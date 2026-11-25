@@ -20,6 +20,16 @@ const SHOP_ACTIONS = {
   reactivate: { from: ['suspended'],           to: 'active',    needsReason: false, done: 'reactivated' },
 };
 
+// Shop statuses in plain words, for messages.
+const SHOP_STATUS_WORDS = { pending: 'waiting for approval', active: 'live', rejected: 'not approved', suspended: 'suspended' };
+
+// What the admin can do with a shop in this status, as a next step: "You can approve or reject it."
+function nextShopStep(status) {
+  const allowed = Object.keys(SHOP_ACTIONS).filter((name) => SHOP_ACTIONS[name].from.includes(status));
+  if (allowed.length === 0) return 'Choose another action.';
+  return `You can ${allowed.join(' or ')} it.`;
+}
+
 // A new shop starts with these shipping settings. The seller can change them in Shop settings (sector 2).
 const NEW_SHOP_SHIPPING_FEE = rupees(50);
 const NEW_SHOP_FREE_SHIPPING_OVER = rupees(499);
@@ -55,7 +65,7 @@ router.post('/api/admin/shops/:id/:action', auth.requireRole('admin'), (req, res
   const reason = auth.cleanText((req.body || {}).reason);
 
   if (!action.from.includes(shop.status)) {
-    throw new HttpError(400, `${shop.shop_name} is ${shop.status}, so it cannot be ${action.done}.`);
+    throw new HttpError(400, `${shop.shop_name} is ${SHOP_STATUS_WORDS[shop.status]}, so it cannot be ${action.done}. ${nextShopStep(shop.status)}`);
   }
   if (action.needsReason && !reason) throw new HttpError(400, `Please give a reason to ${actionName} this shop.`);
   if (reason.length > 200) throw new HttpError(400, 'The reason must be 200 characters or fewer.');

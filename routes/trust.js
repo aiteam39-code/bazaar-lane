@@ -81,7 +81,10 @@ router.get('/unsubscribe/:token', (req, res) => {
   sendPage(res, 'help/unsubscribe.html', {
     title: pageTitle('Newsletter'),
     description: 'Stop the newsletter.',
-    fill: { result: removed ? 'You are off the newsletter. We will not email you again.' : 'This link is not on our list, so there is nothing to stop.' },
+    fill: {
+      result: removed ? 'You are off the newsletter. We will not email you again.' : 'This link is not on our list, so there is nothing to stop.',
+      icon: removed ? 'checkCircle' : 'alert', // a tick only when something was really stopped
+    },
   });
 });
 

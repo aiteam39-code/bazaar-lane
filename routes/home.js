@@ -13,7 +13,8 @@ const router = express.Router();
 const { HttpError } = auth;
 const PRODUCTS_PER_ROW = 12;
 const MOST_ROWS_AT_ONCE = 12;
-const TONES = ['accent', 'success', 'sunk', 'danger'];
+const TONES = ['accent', 'sunk']; // soft colours only: success and danger mean something, so they never decorate
+const OLD_TONES = { success: 'sunk', danger: 'accent' }; // cards saved with an old colour show as one of these
 const PLAIN_WORDS = new Set(['set', 'pack', 'box', 'pair', 'kit', 'mix', 'small', 'large', 'big', 'new']); // not useful as search examples
 
 // "Can be bought": on sale, not deleted, not hidden, in stock, from an open shop.
@@ -106,7 +107,12 @@ function searchWords() {
 // The promo cards in order (only the switched-on ones for customers).
 function promoCards(onlyEnabled) {
   return db.prepare(`SELECT * FROM promo_cards ${onlyEnabled ? 'WHERE enabled = 1' : ''} ORDER BY position, id`).all()
-    .map(({ photo, ...card }) => ({ ...card, photo_url: photoUrl(photo) }));
+    .map(({ photo, ...card }) => ({ ...card, tone: allowedTone(card.tone), photo_url: photoUrl(photo) }));
+}
+
+// A card's colour as one of TONES (an old success or danger colour becomes a soft one).
+function allowedTone(tone) {
+  return TONES.includes(tone) ? tone : OLD_TONES[tone] || 'sunk';
 }
 
 // ---------- Admin: promo cards and category photos ----------
@@ -124,7 +130,7 @@ router.put('/api/admin/promo-cards/:id', auth.requireRole('admin'), (req, res) =
   const title = body.title === undefined ? card.title : auth.cleanText(body.title).replace(/\s+/g, ' ');
   const line = body.line === undefined ? card.line : auth.cleanText(body.line).replace(/\s+/g, ' ');
   const link = body.link === undefined ? card.link : String(body.link).trim();
-  const tone = body.tone === undefined ? card.tone : String(body.tone);
+  const tone = body.tone === undefined ? allowedTone(card.tone) : String(body.tone);
   const enabled = body.enabled === undefined ? card.enabled : body.enabled === true ? 1 : 0;
   if (title.length < 3 || title.length > 50) throw new HttpError(400, 'A title must be 3 to 50 characters.');
   if (line.length > 80) throw new HttpError(400, 'The short line must be 80 characters or fewer.');

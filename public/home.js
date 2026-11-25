@@ -2,9 +2,14 @@
 // "Shop now"), a row of promo cards (the admin switches them on and off), "Shop by category" as a grid of photo tiles,
 // then one sideways row of products per category, 6 rows at first and more as the customer scrolls down. Every
 // product card shows its true delivery days (its shop's dispatch days + 2 to + 5), its size, its maker and its price,
-// and "Add" turns into a - / + stepper once it is in the bag. Old addresses /?search=... and /?category=... move.
+// and "Add" (the kit's AddToCartButton) turns into the kit's - / + stepper once it is in the bag. Above the tiles: the
+// kit's CollectionAccordion of the 5 biggest categories and a "New from makers" grid of the 8 newest ProductCards.
+// Old addresses /?search=... and /?category=... move.
 
 const ROWS_AT_A_TIME = 6;
+const PRODUCTS_PER_ROW = 12; // the most products one category row shows (routes/home.js sends at most 12)
+const TOP_CATEGORIES = 5;
+const NEW_PRODUCTS = 8;
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 let nextRowOffset = 0;
 let rowsDone = false;
@@ -30,6 +35,7 @@ function picture(src, alt, className) {
 
 // ---------- The banner pictures and the promo cards ----------
 
+// The banner's three pictures (decoration only, so their labels are empty).
 function drawBannerPictures(tiles) {
   const host = document.getElementById('banner-pictures');
   host.replaceChildren(...tiles.slice(0, 3).map((tile) => picture(tile.photo_url || placeholderArt(tile.cover_product_id || tile.id), '')));
@@ -47,6 +53,42 @@ function promoCard(card) {
   link.append(words, picture(card.photo_url || placeholderArt(card.id * 7), '', 'promo-photo'));
   item.append(link);
   return item;
+}
+
+// ---------- Top categories (the kit's CollectionAccordion) ----------
+
+// The 5 categories with the most products to buy, as accordion panels that open their category page.
+function drawTopCategories(tiles) {
+  const top = [...tiles].sort((a, b) => b.product_count - a.product_count || a.name.localeCompare(b.name)).slice(0, TOP_CATEGORIES);
+  document.getElementById('top-categories-section').classList.toggle('hidden', top.length === 0);
+  if (top.length === 0) return;
+  mountKit(document.getElementById('top-categories'), IK.CollectionAccordion, {
+    items: top.map((tile) => ({
+      id: String(tile.id),
+      title: tile.name,
+      subtitle: `${tile.product_count} product${tile.product_count === 1 ? '' : 's'}`,
+      image: tile.photo_url || placeholderArt(tile.cover_product_id || tile.id),
+      href: '/category/' + tile.slug,
+      cta: 'Shop ' + tile.name.toLowerCase(),
+    })),
+  });
+}
+
+// ---------- New from makers (the kit's ProductCards) ----------
+
+// The 8 newest products that can be bought; 8 SkeletonCards while they load.
+async function loadNewProducts() {
+  const grid = document.getElementById('new-products');
+  showSkeletons(grid, NEW_PRODUCTS);
+  try {
+    const data = await api('GET', `/api/products?sort=newest&limit=${NEW_PRODUCTS}`);
+    const products = data.products.slice(0, NEW_PRODUCTS);
+    grid.replaceChildren(...products.map(productCard));
+    document.getElementById('new-section').classList.toggle('hidden', products.length === 0);
+  } catch (error) {
+    grid.replaceChildren();
+    throw error;
+  }
 }
 
 // ---------- Shop by category ----------
@@ -86,49 +128,75 @@ function rowCard(product) {
   const control = make('div', 'row-control');
   foot.append(control);
   card.append(foot);
-  drawAddControl(control, product, false);
+  drawAddControl(control, product);
   return card;
 }
 
-// "Add" while the product is not in the bag; the kit's stepper (with a tick right after adding) once it is.
-function drawAddControl(control, product, justAdded) {
+// "Add" (the kit's AddToCartButton, ink so the banner keeps the one accent) while the product is not in the bag;
+// the kit's stepper once it is.
+function drawAddControl(control, product) {
   const quantity = bagQuantityOf(product.id);
-  if (quantity === 0) {
-    const add = make('button', 'add-button', 'Add');
-    add.type = 'button';
-    add.setAttribute('aria-label', `Add ${product.name} to bag`);
-    add.addEventListener('click', () => {
-      addToBag(product).then(() => {
-        drawAddControl(control, product, true);
-        const stepperButton = control.querySelector('button');
-        if (stepperButton) stepperButton.focus(); // keyboard users stay on the card
-      }).catch(() => {});
-    });
-    control.replaceChildren(add);
-    return;
-  }
-  const holder = make('div', 'row-stepper');
-  const tick = make('span', 'added-tick' + (justAdded ? ' is-on' : ''));
-  tick.append(kitIcon('check'));
-  holder.append(tick);
-  const stepper = make('div');
-  holder.append(stepper);
+  if (quantity > 0) return drawStepper(control, product, quantity);
+  const holder = make('div', 'row-add');
   control.replaceChildren(holder);
+  mountKit(holder, IK.AddToCartButton, {
+    label: 'Add',
+    addedLabel: 'Added',
+    tone: 'ink',
+    size: 'sm',
+    'aria-label': `Add ${product.name} to bag`,
+    onAdd: () => addToBag(product).then((inBag) => {
+      whenTickEnds(holder, () => swapToStepper(control, product));
+      return inBag;
+    }),
+  });
+}
+
+// Waits until the kit's button has shown its "Added" tick (the kit's own timing), then calls done.
+function whenTickEnds(holder, done) {
+  const button = holder.querySelector('button');
+  if (!button) return done();
+  let tickShown = false;
+  const watcher = new MutationObserver(() => {
+    if (button.classList.contains('is-done')) tickShown = true;
+    else if (tickShown) {
+      watcher.disconnect();
+      done();
+    }
+  });
+  watcher.observe(button, { attributes: true, attributeFilter: ['class'] });
+}
+
+// Swaps the Add button for the stepper; a keyboard user who was on the button lands on the stepper.
+function swapToStepper(control, product) {
+  const hadFocus = control.contains(document.activeElement);
+  drawAddControl(control, product);
+  if (hadFocus) {
+    requestAnimationFrame(() => {
+      const button = control.querySelector('button:not(:disabled)');
+      if (button) button.focus();
+    });
+  }
+}
+
+// The kit's - / + stepper for a product in the bag; at 0 the Add button comes back.
+function drawStepper(control, product, quantity) {
+  const stepper = make('div', 'row-stepper');
+  control.replaceChildren(stepper);
   const label = `${product.name} in your bag`;
-  const drawStepper = (value) => mountKit(stepper, IK.QuantityStepper, { value, min: 0, max: MOST_OF_ONE, size: 'sm', label, onChange });
+  const draw = (value) => mountKit(stepper, IK.QuantityStepper, { value, min: 0, max: MOST_OF_ONE, size: 'sm', label, onChange });
   function onChange(wanted) {
     setBagQuantity(product.id, wanted);
-    if (wanted === 0) drawAddControl(control, product, false);
-    else drawStepper(wanted);
+    if (wanted === 0) drawAddControl(control, product);
+    else draw(wanted);
   }
-  drawStepper(quantity);
-  if (justAdded) setTimeout(() => tick.classList.remove('is-on'), 1600);
+  draw(quantity);
 }
 
 // One category row: the name on the left, "See all" on the right, the products in a sideways row that snaps,
 // with round arrows on a laptop (a phone swipes).
 function categoryRow(row) {
-  const section = make('section', 'category-row reveal');
+  const section = make('section', 'category-row');
   const titleId = 'row-title-' + row.category.id;
   section.setAttribute('aria-labelledby', titleId);
   const head = make('div', 'section-head');
@@ -154,6 +222,7 @@ function categoryRow(row) {
   return section;
 }
 
+// A round arrow that scrolls a row back or forward by most of its width.
 function arrowButton(word, label, direction, list) {
   const button = make('button', 'row-arrow ' + (direction < 0 ? 'is-back' : 'is-next'));
   button.type = 'button';
@@ -165,13 +234,13 @@ function arrowButton(word, label, direction, list) {
   return button;
 }
 
-// Skeleton rows while the next rows load.
+// Skeleton rows while the next rows load: as many rows as will come, each with as many cards as a row shows.
 function skeletonRows(count) {
   return Array.from({ length: count }, () => {
     const section = make('div', 'category-row is-loading');
     section.append(make('div', 'skeleton-title'));
     const list = make('div', 'product-row');
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < PRODUCTS_PER_ROW; i += 1) {
       const slot = make('div', 'row-card');
       mountKit(slot, IK.SkeletonCard, {});
       list.append(slot);
@@ -186,14 +255,13 @@ async function loadMoreRows() {
   if (rowsDone || rowsLoading) return false;
   rowsLoading = true;
   const host = document.getElementById('category-rows');
-  const skeletons = skeletonRows(Math.min(2, ROWS_AT_A_TIME));
+  const skeletons = skeletonRows(ROWS_AT_A_TIME);
   host.append(...skeletons);
   try {
     const data = await api('GET', `/api/home/rows?offset=${nextRowOffset}&limit=${ROWS_AT_A_TIME}`);
     skeletons.forEach((skeleton) => skeleton.remove());
     const sections = data.rows.map(categoryRow);
     host.append(...sections);
-    sections.forEach(watchReveal);
     nextRowOffset = data.next_offset;
     rowsDone = data.done;
     document.getElementById('rows-more').textContent = rowsDone ? '' : 'Scroll down for more categories.';
@@ -213,71 +281,57 @@ function markerIsNear() {
   return document.getElementById('rows-more').getBoundingClientRect().top < window.innerHeight + 600;
 }
 
+// Keeps loading 6 rows at a time while the end of the rows is near the screen.
 async function loadWhileNear() {
   while (!rowsDone && markerIsNear() && await loadMoreRows()) { /* the next 6 */ }
 }
 
+// While scrolling: at most one check every 100 ms whether more rows are needed.
 let scrollCheckWaiting = false;
 function onScroll() {
   if (scrollCheckWaiting) return;
   scrollCheckWaiting = true;
   setTimeout(() => {
     scrollCheckWaiting = false;
-    revealVisible();
     if (!rowsDone && !rowsLoading && markerIsNear()) loadWhileNear();
   }, 100);
 }
 
-// ---------- Sections fade and rise once as they come into view (not with reduced motion) ----------
-
-function watchReveal(element) {
-  if (reduceMotion.matches) return;
-  element.classList.add('will-reveal');
-  setTimeout(revealVisible, 0);
-}
-
-// Every waiting section that is on the screen, or already above it, shows (so nothing is ever left hidden).
-function revealVisible() {
-  document.querySelectorAll('.will-reveal:not(.is-in)').forEach((element) => {
-    if (element.getBoundingClientRect().top < window.innerHeight - 40) element.classList.add('is-in');
-  });
-}
-
 // ---------- The shops ----------
 
+// The open shops, each as a card that opens its page.
 async function loadShops() {
   const data = await api('GET', '/api/shops');
   document.getElementById('shops').replaceChildren(...data.shops.map(shopCard));
   document.getElementById('no-shops').classList.toggle('hidden', data.shops.length > 0);
 }
 
+// One shop card: its name, its city (left out when the shop has not set one), its rating and description.
 function shopCard(shop) {
   const card = make('a', 'card shop-card');
   card.href = '/store/' + encodeURIComponent(shop.slug);
-  card.append(
-    make('h3', '', shop.shop_name),
-    make('p', 'vendor-line', shop.city || 'City not set yet'),
-    ratingLine(shop.rating, shop.review_count, true),
-    make('p', 'muted', shop.description || 'A new shop.')
-  );
+  card.append(make('h3', '', shop.shop_name));
+  if (shop.city) card.append(make('p', 'vendor-line', shop.city));
+  card.append(ratingLine(shop.rating, shop.review_count, true), make('p', 'muted', shop.description || 'A new shop.'));
   return card;
 }
 
 // ---------- Start ----------
 
+// The banner pictures, promo cards, top categories and category tiles.
 async function loadHome() {
   const data = await api('GET', '/api/home');
   drawBannerPictures(data.categories);
   document.getElementById('promo-cards').replaceChildren(...data.promo_cards.map(promoCard));
   document.querySelector('.promo-section').classList.toggle('hidden', data.promo_cards.length === 0);
+  drawTopCategories(data.categories);
   document.getElementById('category-tiles').replaceChildren(...data.categories.map(categoryTile));
 }
 
 if (!moveOldAddresses()) {
-  document.querySelectorAll('.reveal').forEach(watchReveal);
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll, { passive: true });
-  Promise.all([loadHome(), loadMoreRows(), loadShops()]).then(loadWhileNear).catch((error) => {
+  Promise.all([loadHome(), loadNewProducts(), loadMoreRows(), loadShops()]).then(loadWhileNear).catch((error) => {
     showMessage(document.getElementById('message'), error.message, 'error');
   });
 }

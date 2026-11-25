@@ -58,7 +58,7 @@ function adminProductCard(product) {
   if (product.hidden) card.append(make('p', 'reason', 'Hidden: ' + product.hidden_reason));
   const row = make('div', 'actions');
   if (product.hidden) row.append(adminButton('Unhide', '', () => unhideProduct(product)));
-  else row.append(adminButton('Hide', 'danger', () => askHide(product, card)));
+  else row.append(adminButton('Hide', 'secondary', () => askHide(product, card)));
   card.append(row);
   return card;
 }
@@ -71,24 +71,43 @@ function adminButton(text, style, onClick) {
   return button;
 }
 
-// Hide asks for a reason first. The seller will see it.
+// Hide opens a box under the product: the admin types the reason (the seller will see it), then confirms with the
+// kit's two-step ConfirmButton ("Hide product?"). Cancel closes the box.
 function askHide(product, card) {
-  openConfirmBox(card, {
-    question: `Why hide ${product.name}? The seller will see this.`,
-    confirmText: 'Hide product',
-    askReason: true,
-    onConfirm: async (reason, boxMessage) => {
-      try {
-        const result = await api('POST', `/api/admin/products/${product.id}/hide`, { reason });
-        closeConfirmBoxes();
-        showMessage(allProductsMessage, result.message, 'ok');
-        await loadAllProducts();
-      } catch (error) {
-        if (goToLoginIfNeeded(error)) return;
-        showMessage(boxMessage, error.message, 'error');
-      }
-    },
+  closeConfirmBoxes();
+  const box = make('div', 'reason-box confirm-box');
+  box.dataset.busy = 'yes'; // stops the 5-second refresh while the box is open
+  const input = make('textarea');
+  input.id = 'confirm-box-reason';
+  input.rows = 3;
+  input.maxLength = 200;
+  const label = make('label', '', `Why hide ${product.name}? The seller will see this.`);
+  label.htmlFor = input.id;
+  const boxMessage = make('div', 'message');
+  const confirm = make('span');
+  mountKit(confirm, IK.ConfirmButton, {
+    label: 'Hide product', confirmLabel: 'Hide product?', hint: 'Press again to hide this product from customers',
+    onConfirm: () => hideProduct(product, input.value, boxMessage),
   });
+  const cancel = adminButton('Cancel', 'secondary', closeConfirmBoxes);
+  const row = make('div', 'actions');
+  row.append(confirm, cancel);
+  box.append(label, input, boxMessage, row);
+  card.append(box);
+  input.focus();
+}
+
+// Sends Hide with the reason; a problem (for example no reason) shows inside the box.
+async function hideProduct(product, reason, boxMessage) {
+  try {
+    const result = await api('POST', `/api/admin/products/${product.id}/hide`, { reason });
+    closeConfirmBoxes();
+    showMessage(allProductsMessage, result.message, 'ok');
+    await loadAllProducts();
+  } catch (error) {
+    if (goToLoginIfNeeded(error)) return;
+    showMessage(boxMessage, error.message, 'error');
+  }
 }
 
 // Unhide: customers can see the product again (unless its seller switched it off).

@@ -40,7 +40,6 @@ function showProduct(data) {
   mountKit(document.getElementById('product-price'), IK.RollingNumber, {
     value: product.price / 100, format: (n) => formatMoney(Math.round(n * 100)), animateOnMount: false,
   });
-  document.getElementById('product-size').textContent = product.size_label || '';
   const stock = document.getElementById('product-stock');
   stock.textContent = product.stock_words;
   stock.classList.toggle('is-few', Boolean(product.few_left));
@@ -55,10 +54,26 @@ function showProduct(data) {
   document.getElementById('product').classList.remove('hidden');
 }
 
-// Quantity and the kit's Add to bag (the one accent on this page). A sold-out product has neither.
+// The kit's size picker. Each product is sold in one size: its size label (like "250 g"), or "One size".
+// It is shown even when sold out, marked as such (the screen map: show every size, sold out included).
+function showVariant(product) {
+  const size = product.size_label || 'One size';
+  mountKit(document.getElementById('product-variant'), IK.VariantPicker, {
+    label: 'Size', kind: 'size', value: size,
+    options: [{ value: size, label: size, soldOut: Boolean(product.sold_out) }],
+  });
+}
+
+// Quantity and the kit's Add to bag (the one accent on this page). A sold-out product gets the kit's sold-out
+// button (it cannot be pressed) and no quantity.
 function showBuyRow(product) {
   const row = document.getElementById('product-buy');
-  if (product.sold_out) return row.replaceChildren(make('p', 'badge badge-soldout', 'Sold out'));
+  showVariant(product);
+  if (product.sold_out) {
+    const soldOut = make('span', 'add-slot');
+    mountKit(soldOut, IK.AddToCartButton, { tone: 'accent', soldOut: true, soldOutLabel: 'Sold out' });
+    return row.replaceChildren(soldOut);
+  }
   const most = product.few_left || MOST_OF_ONE;
   const stepper = make('span', 'stepper-slot');
   const add = make('span', 'add-slot');

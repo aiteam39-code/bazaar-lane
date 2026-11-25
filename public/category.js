@@ -24,9 +24,12 @@ async function loadCategoryPage(swing) {
     if (!category) return showCategoryNotFound();
     showCategoryHeading(category);
     if (showsList()) return showList(category);
+    if (!categoryCarousel) showLoadingCards(category.product_count);
     const data = await api('GET', '/api/products?category=' + category.id);
+    hideLoadingCards();
     showCarousel(category, data.products, swing);
   } catch (error) {
+    hideLoadingCards();
     if (error.status === 404) return showCategoryNotFound();
     showMessage(document.getElementById('message'), error.message, 'error');
   }
@@ -41,6 +44,20 @@ function showCategoryHeading(category) {
   showViewLinks(category.slug);
   document.getElementById('not-found').classList.add('hidden');
   document.getElementById('category').classList.remove('hidden');
+}
+
+// SkeletonCards while the first products load: one per product, at most a row of 4.
+function showLoadingCards(productCount) {
+  const grid = document.getElementById('loading-cards');
+  showSkeletons(grid, Math.min(Math.max(productCount, 1), 4));
+  grid.classList.remove('hidden');
+}
+
+// Takes the SkeletonCards away once the products are here.
+function hideLoadingCards() {
+  const grid = document.getElementById('loading-cards');
+  grid.replaceChildren();
+  grid.classList.add('hidden');
 }
 
 // The products on the turning ring.

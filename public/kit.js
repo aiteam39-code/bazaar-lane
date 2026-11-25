@@ -19,6 +19,18 @@ function mountKit(element, component, props) {
 // Money in paise as the kit shows it: ₹1,299 (paise only when there are some).
 const rupeesOf = (paise) => paise / 100;
 
+// Plays one of the kit's four sounds ('tick', 'add', 'paid', 'error'). The kit stays silent unless the shopper
+// turned sound on with the footer's "Play sounds" switch (sound is off by default).
+function playSound(name) {
+  if (window.IK && IK.sound && IK.sound.isEnabled()) IK.sound.play(name);
+}
+
+// A kit ConfirmButton (asks once, then a second press confirms) in an element, for a destructive action without a
+// typed reason, like Delete or Switch off. label and confirmLabel start with a verb ("Delete", "Delete product?").
+function mountConfirm(element, { label, confirmLabel, hint, onConfirm }) {
+  mountKit(element, IK.ConfirmButton, { label, confirmLabel, hint: hint || 'Press again to confirm', onConfirm });
+}
+
 // ---------- Toasts: "Added to bag" and other short notes, one stack per page ----------
 
 let toastList = [];
@@ -32,6 +44,7 @@ function showToast(toast) {
   drawToasts();
 }
 
+// Draws the toast stack (bottom centre on a phone, bottom right on a laptop).
 function drawToasts() {
   if (!toastHost) {
     toastHost = make('div', 'toast-host');
@@ -48,11 +61,18 @@ function drawToasts() {
 // ---------- The bag ----------
 
 // Adds a product to the bag (in this browser) and shows the "Added to bag" toast with its photo and View bag.
-// Returns a promise, so the kit's add button shows its tick, or "Try again" when the bag is full.
+// Returns a promise, so the kit's add button shows its tick. When nothing could be added (the bag holds 50 different
+// products, or already 20 of this one) a toast says why and what to do, and the promise is refused.
 function addToBag(product, quantity = 1) {
   let inBag = 0;
-  for (let i = 0; i < quantity; i += 1) inBag = addToCart(product.id);
-  if (inBag === 0) return Promise.reject(new Error('Your bag is full.'));
+  let addedAny = false;
+  for (let i = 0; i < quantity; i += 1) {
+    const result = addToCart(product.id);
+    inBag = result.quantity;
+    if (result.added) addedAny = true;
+  }
+  if (!addedAny) return refuseAdd(product, inBag);
+  playSound('add');
   showToast({
     title: (window.SEASON_WORDS && SEASON_WORDS.added) || 'Added to bag', // a season may warm the words
     body: inBag === MOST_OF_ONE ? `${product.name} · ${MOST_OF_ONE} in your bag, the most for one order` : product.name,
@@ -62,14 +82,29 @@ function addToBag(product, quantity = 1) {
   return Promise.resolve(inBag);
 }
 
-// The bag count in the header rolls when it changes (RollingNumber).
+// Says why a product could not go in the bag (a toast and the error sound) and refuses the promise.
+function refuseAdd(product, inBag) {
+  const full = inBag === 0;
+  const words = full
+    ? `Your bag has ${MOST_LINES} different products, the most it can hold. Remove one to add this.`
+    : `You already have ${MOST_OF_ONE} of ${product.name} in your bag, the most for one order.`;
+  showToast({
+    title: full ? 'Bag is full' : 'Nothing added',
+    body: words,
+    tone: full ? 'danger' : 'neutral',
+    action: { label: 'View bag', onClick: () => { location.href = '/cart.html'; } },
+  });
+  playSound('error');
+  return Promise.reject(new Error(words));
+}
+
 // The bag in the header: the count and the total roll when they change; the button is greyed out while the bag is
 // empty. The total always comes from the server (POST /api/cart), never from the browser's own maths.
 let bagTotalAsk = 0;
 function drawBagCount() {
   const count = cartCount();
   document.querySelectorAll('[data-bag-count]').forEach((element) => {
-    mountKit(element, IK.RollingNumber, { value: count, animateOnMount: false });
+    mountKit(element, IK.RollingNumber, { value: count, animateOnMount: false, live: true });
   });
   document.querySelectorAll('[data-bag-link]').forEach((link) => {
     link.classList.toggle('is-empty', count === 0);
@@ -78,6 +113,7 @@ function drawBagCount() {
   drawBagTotal(count);
 }
 
+// The bag's total in the header, priced by the server; an older answer that arrives late is ignored.
 async function drawBagTotal(count) {
   const totals = document.querySelectorAll('[data-bag-total]');
   if (totals.length === 0) return;
@@ -118,6 +154,7 @@ function bagQuantityOf(productId) {
 
 const WISHLIST_KEY = 'bazaarWishlist';
 
+// The saved product numbers in this browser's wishlist (broken values are left out).
 function readWishlist() {
   try {
     const saved = JSON.parse(localStorage.getItem(WISHLIST_KEY) || '[]');
@@ -127,6 +164,7 @@ function readWishlist() {
   }
 }
 
+// Saves or forgets one product in the wishlist.
 function setWishlisted(productId, saved) {
   const list = readWishlist().filter((id) => id !== productId);
   if (saved) list.push(productId);
@@ -186,14 +224,18 @@ function ratingLine(rating, count, small) {
   return line;
 }
 
-// 5 stars, filled up to the rating (rounded to the nearest whole star). Hidden from screen readers: the words say it.
+// 5 star outlines, the ones up to the rating (rounded to the nearest whole star) marked is-on, drawn like the kit's
+// icons (outline only, 1.75 stroke, round caps, the text colour). Hidden from screen readers: the words beside them
+// always say the rating, so it is never shown by colour alone.
 function starRow(rating) {
   const svgSpace = 'http://www.w3.org/2000/svg';
   const row = make('span', 'stars');
   row.setAttribute('aria-hidden', 'true');
+  const settings = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75',
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', focusable: 'false' };
   for (let i = 1; i <= 5; i += 1) {
     const svg = document.createElementNS(svgSpace, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
+    for (const [name, value] of Object.entries(settings)) svg.setAttribute(name, value);
     svg.setAttribute('class', i <= Math.round(rating) ? 'star is-on' : 'star');
     const path = document.createElementNS(svgSpace, 'path');
     path.setAttribute('d', 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z');
@@ -207,8 +249,7 @@ function starRow(rating) {
 
 // The header of every customer page (it stays on top while scrolling): the name and the delivery line (the real
 // range from the open shops' dispatch days, and the customer's own city or PIN code, saved in this browser), a big
-// search box whose example word changes every 3 seconds (real product words; it stops while the box has focus and
-// with reduced motion), Log in, and the bag with its rolling count and total (greyed out when empty). Under them:
+// search box whose example word changes every 3 seconds, Log in, and the bag with its rolling count and total (greyed out when empty). Under them:
 // the Categories menu, "Sell on Bazaar Lane" and My orders.
 const PLACE_KEY = 'bazaarPlace';
 function buildCustomerHeader(host) {
@@ -321,6 +362,7 @@ function deliveryLine() {
   return line;
 }
 
+// The customer's city or PIN code saved in this browser, or ''.
 function readPlace() {
   try {
     return localStorage.getItem(PLACE_KEY) || '';
@@ -329,7 +371,7 @@ function readPlace() {
   }
 }
 
-// Fills the real delivery days and starts the search box's example words.
+// Fills the real delivery days and the search box's example words.
 async function fillHeaderFacts(host, box) {
   let facts = null;
   try {
@@ -342,19 +384,22 @@ async function fillHeaderFacts(host, box) {
   rotateSearchWords(box, facts.search_words || []);
 }
 
-// 'Search "pickle"', then another real word every 3 seconds; not while the box has focus or text, nor with
-// reduced motion (then the first word stays).
+// The search box's example word ('Search "pickle"') changes every 3 seconds (the owner's rule in CLAUDE.md). Only the
+// words change, nothing moves. It stops for good once the box gets the focus, never runs with reduced motion, and
+// waits while the tab is hidden.
+const SEARCH_WORD_EVERY = 3000;
 function rotateSearchWords(box, words) {
   if (words.length === 0) return;
   let index = 0;
-  const show = () => { box.placeholder = `Search "${words[index % words.length]}"`; };
-  show();
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  setInterval(() => {
-    if (document.activeElement === box || box.value || document.hidden) return;
-    index += 1;
-    show();
-  }, 3000);
+  box.placeholder = `Search "${words[0]}"`;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (words.length < 2 || still.matches) return;
+  const timer = setInterval(() => {
+    if (document.hidden || still.matches) return;
+    index = (index + 1) % words.length;
+    box.placeholder = `Search "${words[index]}"`;
+  }, SEARCH_WORD_EVERY);
+  box.addEventListener('focus', () => clearInterval(timer), { once: true });
 }
 
 // The Categories menu: every category with its clean address.
@@ -369,7 +414,7 @@ async function fillCategoryMenu(list) {
       return item;
     }));
   } catch (e) {
-    list.replaceChildren(make('li', 'muted', 'Categories could not load.'));
+    list.replaceChildren(make('li', 'muted', 'Categories could not load. Reload the page to try again.'));
   }
 }
 
@@ -458,11 +503,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.querySelector('[data-staff-header]')) setUpLogoutButtons(); // the header's Log out was made after common.js looked
 }, { once: true });
 
-// ---------- The footer extras: the newsletter, the light/night switch and the sound switch ----------
+// ---------- The footer extras: the newsletter, the Light/Dark switch and the sound switch ----------
 
-const THEME_KEY = 'bazaarTheme';  // 'lane', 'night' or empty (follow the computer)
+const THEME_KEY = 'bazaarTheme';  // 'lane' (Light), 'night' (Dark) or empty (follow the device until the person chooses)
 const SOUND_KEY = 'bazaarSound';  // 'on' or empty (off: the kit's sound is off by default)
 
+// Adds the newsletter form, the Light/Dark switch and the sound switch under the footer links.
 function buildFooterExtras(host) {
   const extras = make('div', 'footer-extras');
   extras.append(newsletterForm(), themeSwitch(), soundSwitch());
@@ -505,45 +551,54 @@ function newsletterForm() {
   return form;
 }
 
-// Light / Night / Same as my computer, remembered in this browser.
+// Theme: two choices, Light (lane) and Dark (night). Until the person picks one, the page follows the device and the
+// switch shows which one that is; a pick is remembered in this browser (bazaarTheme).
 function themeSwitch() {
-  const wrap = make('div', 'footer-switch');
-  const label = make('label', '', 'Theme');
-  const choice = make('select');
-  choice.id = 'theme-choice';
-  label.htmlFor = choice.id;
-  for (const [value, text] of [['', 'Same as my computer'], ['lane', 'Light'], ['night', 'Night']]) {
-    const option = make('option', '', text);
-    option.value = value;
-    choice.append(option);
-  }
-  choice.value = readSetting(THEME_KEY);
-  choice.addEventListener('change', () => {
-    saveSetting(THEME_KEY, choice.value);
-    followDarkMode();
+  const group = make('fieldset', 'footer-switch theme-switch');
+  group.append(make('legend', '', 'Theme'));
+  const radios = [['lane', 'Light'], ['night', 'Dark']].map(([value, text]) => {
+    const choice = make('label', 'choice');
+    const radio = make('input');
+    radio.type = 'radio';
+    radio.name = 'theme-choice';
+    radio.value = value;
+    radio.addEventListener('change', () => {
+      saveSetting(THEME_KEY, value);
+      followDarkMode();
+      playSound('tick');
+    });
+    choice.append(radio, ' ' + text);
+    group.append(choice);
+    return radio;
   });
-  wrap.append(label, choice);
-  return wrap;
+  const show = () => radios.forEach((radio) => { radio.checked = radio.value === document.documentElement.dataset.theme; });
+  document.addEventListener('bazaar-theme', show);
+  show();
+  return group;
 }
 
-// Sound: off by default; when on, the kit plays its four short sounds (added to bag, paid, error, tick).
+// Sound: off by default. "Play sounds" (aria-pressed says on or off, and a tick shows it is on) turns the kit's four
+// short sounds on or off: tick (a choice), add (added to bag), paid (payment or code checked) and error.
 function soundSwitch() {
-  const button = make('button', 'secondary', '');
+  const button = make('button', 'secondary sound-switch');
   button.type = 'button';
   const draw = () => {
     const on = readSetting(SOUND_KEY) === 'on';
-    button.textContent = on ? 'Sound: on' : 'Sound: off';
+    button.replaceChildren(make('span', '', 'Play sounds'));
+    if (on) button.prepend(kitIcon('check'));
     button.setAttribute('aria-pressed', String(on));
-    if (window.IK && IK.sound) { if (on) IK.sound.enable(); else if (IK.sound.disable) IK.sound.disable(); }
+    if (window.IK && IK.sound) { if (on) IK.sound.enable(); else IK.sound.disable(); }
   };
   button.addEventListener('click', () => {
     saveSetting(SOUND_KEY, readSetting(SOUND_KEY) === 'on' ? '' : 'on');
     draw();
+    playSound('tick'); // only heard when sound was just turned on
   });
   draw();
   return button;
 }
 
+// Reads one setting saved in this browser ('' when there is none or saving is blocked).
 function readSetting(key) {
   try {
     return localStorage.getItem(key) || '';
@@ -552,6 +607,7 @@ function readSetting(key) {
   }
 }
 
+// Saves one setting in this browser ('' forgets it).
 function saveSetting(key, value) {
   try {
     if (value) localStorage.setItem(key, value);

@@ -5,6 +5,8 @@
 
 const cartMessage = document.getElementById('message');
 let latestAsk = 0; // only the answer to the newest question is drawn, when the quantity is changed quickly
+let removedLines = []; // lines just removed, drawn in their old place with Undo for 8 seconds
+let undoToFocus = null; // the product whose Undo button gets the keyboard focus after the bag is drawn again
 
 // Asks the server to price the cart, then draws it.
 async function loadCart() {
@@ -21,10 +23,11 @@ async function loadCart() {
   }
 }
 
-// "Your cart is empty".
+// "Your bag is empty" (with Undo for a product just removed, so it can come back).
 function showEmptyCart() {
   latestAsk++;
-  document.getElementById('cart-groups').replaceChildren();
+  document.getElementById('cart-groups').replaceChildren(...removedLines.map(removedShopGroup));
+  focusUndo();
   document.getElementById('problems').classList.add('hidden');
   document.getElementById('cart-summary').classList.add('hidden');
   document.getElementById('cart-empty').classList.remove('hidden');
@@ -34,7 +37,10 @@ function showEmptyCart() {
 function showCart(priced) {
   document.getElementById('cart-empty').classList.add('hidden');
   showProblems(priced.problems);
-  document.getElementById('cart-groups').replaceChildren(...priced.groups.map(shopGroup));
+  const shopsShown = new Set(priced.groups.map((group) => group.shop_slug));
+  const emptiedShops = removedLines.filter((removed) => !shopsShown.has(removed.shop_slug)).map(removedShopGroup);
+  document.getElementById('cart-groups').replaceChildren(...priced.groups.map(shopGroup), ...emptiedShops);
+  focusUndo();
   document.getElementById('sum-items').textContent = formatMoney(priced.items_total);
   document.getElementById('sum-shipping').textContent = priced.shipping_total === 0 ? 'Free' : formatMoney(priced.shipping_total);
   mountKit(document.getElementById('sum-grand'), IK.RollingNumber, {
@@ -61,16 +67,17 @@ function showProblems(problems) {
   }));
 }
 
-// One shop's box: its name, its products, its items total, shipping and shop total.
+// One shop's box: its maker line ("Shop · City"), its products (a product just removed keeps its place with Undo),
+// its items total, shipping and shop total.
 function shopGroup(group) {
   const box = make('section', 'card cart-group');
-  const title = make('h2');
-  const shopLink = make('a', '', group.shop_name);
-  shopLink.href = '/store/' + encodeURIComponent(group.shop_slug);
-  title.append(shopLink);
-  box.append(title);
+  box.append(shopTitle(group));
   if (group.free_shipping_over !== null && group.shipping_fee > 0) box.append(freeShippingMeter(group));
-  box.append(...group.lines.map(cartLine));
+  const rows = group.lines.map((line, place) => cartLine(line, group, place));
+  for (const removed of removedLines.filter((r) => r.shop_slug === group.shop_slug).sort((a, b) => a.place - b.place)) {
+    rows.splice(Math.min(removed.place, rows.length), 0, undoRow(removed));
+  }
+  box.append(...rows);
   box.append(totalRow('Items', formatMoney(group.items_total)));
   box.append(totalRow('Shipping', group.shipping === 0 ? 'Free shipping' : formatMoney(group.shipping)));
   box.append(make('p', 'muted small', `Arrives in ${group.delivery.from_days} to ${group.delivery.to_days} days`));
@@ -93,8 +100,24 @@ function freeShippingMeter(group) {
   return box;
 }
 
+// The shop's heading: "Chilli Lane Pantry · Jaipur", a link to its shop page.
+function shopTitle(group) {
+  const title = make('h2');
+  const shopLink = make('a', '', vendorLine({ shop_name: group.shop_name, city: group.city }));
+  shopLink.href = '/store/' + encodeURIComponent(group.shop_slug);
+  title.append(shopLink);
+  return title;
+}
+
+// The box of a shop whose last product was just removed: its heading and the Undo row, until Undo runs out.
+function removedShopGroup(removed) {
+  const box = make('section', 'card cart-group');
+  box.append(shopTitle({ shop_name: removed.shop_name, city: removed.city, shop_slug: removed.shop_slug }), undoRow(removed));
+  return box;
+}
+
 // One product in the bag: photo, name, price each, - quantity +, line total and Remove.
-function cartLine(line) {
+function cartLine(line, group, place) {
   const row = make('div', 'cart-line');
   const picture = productPicture(line, 'line-photo');
   const name = make('a', 'line-name', line.name);
@@ -111,7 +134,7 @@ function cartLine(line) {
   const remove = make('span', 'remove-slot');
   mountKit(remove, IK.ConfirmButton, {
     label: 'Remove', confirmLabel: 'Remove item?', hint: `Press again to remove ${line.name} from your bag`,
-    onConfirm: () => removeFromCart(line),
+    onConfirm: () => removeFromCart(line, group, place),
   });
   quantity.append(stepper, make('strong', 'line-total', formatMoney(line.line_total)), remove);
 
@@ -144,30 +167,56 @@ function setQuantity(productId, quantity) {
   loadCart();
 }
 
-// Takes a product out of the bag, offers Undo in its place, then prices the bag again.
-// (A problem row passes just the product id.)
-function removeFromCart(lineOrId) {
+// Takes a product out of the bag, then prices the bag again. A line from a shop box (with its group and place)
+// leaves "Removed <name>. Undo" in its own place for 8 seconds. (A problem row passes just the product id.)
+function removeFromCart(lineOrId, group, place) {
   const productId = typeof lineOrId === 'object' ? lineOrId.product_id : lineOrId;
-  const removed = readCart().find((l) => l.product_id === productId);
+  const saved = readCart().find((l) => l.product_id === productId);
   saveCart(readCart().filter((l) => l.product_id !== productId));
-  if (removed && typeof lineOrId === 'object') offerUndo(lineOrId.name, removed);
+  if (saved && group) rememberRemoved(lineOrId, group, place, saved);
   loadCart();
 }
 
-// "Removed Hot Chilli Sauce. Undo" for 8 seconds.
-function offerUndo(name, removed) {
-  const row = document.getElementById('undo-row');
+// Remembers a removed line (its saved cart entry, its shop and its place) and forgets it after 8 seconds.
+function rememberRemoved(line, group, place, saved) {
+  forgetRemoved(line.product_id);
+  const removed = { product_id: line.product_id, name: line.name, saved, place,
+    shop_slug: group.shop_slug, shop_name: group.shop_name, city: group.city };
+  removed.timer = setTimeout(() => { forgetRemoved(removed.product_id); loadCart(); }, 8000);
+  removedLines.push(removed);
+  undoToFocus = removed.product_id;
+}
+
+// Stops offering Undo for this product.
+function forgetRemoved(productId) {
+  const old = removedLines.find((r) => r.product_id === productId);
+  if (old) clearTimeout(old.timer);
+  removedLines = removedLines.filter((r) => r.product_id !== productId);
+}
+
+// "Removed Hot Chilli Sauce. Undo", drawn where the line was. Undo puts the line back as it was.
+function undoRow(removed) {
+  const row = make('div', 'undo-row');
+  row.setAttribute('role', 'status');
   const undo = cartButton('Undo', 'secondary', () => {
     const cart = readCart();
-    if (!cart.some((l) => l.product_id === removed.product_id)) cart.push(removed);
+    if (!cart.some((l) => l.product_id === removed.product_id)) cart.push(removed.saved);
     saveCart(cart);
-    row.classList.add('hidden');
+    forgetRemoved(removed.product_id);
     loadCart();
   });
-  row.replaceChildren(make('span', '', `Removed ${name}.`), undo);
-  row.classList.remove('hidden');
-  clearTimeout(row.hideTimer);
-  row.hideTimer = setTimeout(() => row.classList.add('hidden'), 8000);
+  undo.dataset.undoFor = removed.product_id;
+  undo.setAttribute('aria-label', `Undo: put ${removed.name} back in your bag`);
+  row.append(make('span', '', `Removed ${removed.name}.`), undo);
+  return row;
+}
+
+// After a Remove, the keyboard focus goes to that line's Undo button (the Remove button is gone).
+function focusUndo() {
+  if (undoToFocus === null) return;
+  const button = document.querySelector(`[data-undo-for="${undoToFocus}"]`);
+  undoToFocus = null;
+  if (button) button.focus();
 }
 
 // If the cart changes in another tab, show the new cart here too.

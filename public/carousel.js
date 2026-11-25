@@ -10,12 +10,29 @@
 // while the pointer is over it, a sideways swipe, or a click on a side product. After the last product it goes round
 // to the first. It turns by itself every 4 seconds while nobody is using it. With "reduce motion" switched on, there is
 // no animation and no turning by itself; the arrows and keys still switch products instantly.
+// Its timings are the kit's: one turn takes --dur-slow, a category swing --dur-base (kit/tokens.css).
 
 const CAROUSEL_SIDE = 3;       // at most 3 products on each side of the middle
-const CAROUSEL_TURN_MS = 600;  // one turn takes 0.6 seconds (the same as --turn in style.css)
 const CAROUSEL_AUTO_MS = 4000; // it turns by itself every 4 seconds while nobody is using it
-const CAROUSEL_SWING_MS = 350; // picking another category: the old products swing out for 0.35 seconds
 const SWIPE_PIXELS = 40;       // a sideways swipe of at least 40 pixels turns it
+
+// Reads one of the kit's timing tokens (like "--dur-slow: 520ms") in milliseconds; fallback when it cannot be read.
+function kitDurationMs(tokenName, fallback) {
+  const text = getComputedStyle(document.documentElement).getPropertyValue(tokenName).trim();
+  const number = parseFloat(text);
+  if (!Number.isFinite(number)) return fallback;
+  return text.endsWith('ms') ? number : number * 1000;
+}
+
+// One turn takes as long as the kit's --dur-slow (520 ms).
+function carouselTurnMs() {
+  return kitDurationMs('--dur-slow', 520);
+}
+
+// Picking another category: the old products swing out for the kit's --dur-base (240 ms).
+function carouselSwingMs() {
+  return kitDurationMs('--dur-base', 240);
+}
 
 // True when the person asked their computer or phone for less motion.
 function wantsLessMotion() {
@@ -52,8 +69,8 @@ class ProductCarousel {
     this.section.tabIndex = 0;
     this.stage = make('div', 'carousel-stage');
     this.ring = make('div', 'carousel-ring');
-    this.prevButton = this.arrowButton('carousel-arrow prev', '‹', 'Previous product', -1);
-    this.nextButton = this.arrowButton('carousel-arrow next', '›', 'Next product', 1);
+    this.prevButton = this.arrowButton('carousel-arrow prev', 'Previous product', -1);
+    this.nextButton = this.arrowButton('carousel-arrow next', 'Next product', 1);
     this.stage.append(this.ring, this.prevButton, this.nextButton);
     this.names = make('div', 'carousel-names');
     this.names.setAttribute('aria-hidden', 'true'); // the details below say the same in words
@@ -64,9 +81,11 @@ class ProductCarousel {
     this.setLabel(label);
   }
 
-  // One arrow button (at least 44 pixels). steps: -1 for the previous product, 1 for the next.
-  arrowButton(className, text, label, steps) {
-    const button = make('button', className, text);
+  // One arrow button (48 pixels) with the kit's arrow icon (style.css turns it round for "previous").
+  // steps: -1 for the previous product, 1 for the next.
+  arrowButton(className, label, steps) {
+    const button = make('button', className);
+    button.append(kitIcon('arrow'));
     button.type = 'button';
     button.setAttribute('aria-label', label);
     button.addEventListener('click', () => this.turn(steps, true));
@@ -103,7 +122,7 @@ class ProductCarousel {
     this.swingTimer = setTimeout(() => {
       this.section.classList.remove('swing-out');
       this.fill(products, true);
-    }, CAROUSEL_SWING_MS);
+    }, carouselSwingMs());
   }
 
   // Makes one card and one name for every product, puts them in their places, and shows the middle product's details.
@@ -159,7 +178,6 @@ class ProductCarousel {
     this.comeInFromTheRightSide(steps);
     this.current = (((this.current + steps) % count) + count) % count;
     this.place(steps);
-    this.blurWhileTurning();
     this.showDetails();
     this.status.setAttribute('aria-live', byPerson ? 'polite' : 'off');
     this.status.textContent = this.describe();
@@ -210,13 +228,6 @@ class ProductCarousel {
     this.offsets[coming] = steps;
   }
 
-  // A short blur on the boxes while they move (the CSS animation runs once per turn).
-  blurWhileTurning() {
-    this.ring.classList.remove('is-turning');
-    void this.ring.offsetWidth;
-    this.ring.classList.add('is-turning');
-  }
-
   // "Hot Chilli Sauce, Rs 220, from Chilli Lane Pantry. 3 of 6."
   describe() {
     const product = this.products[this.current];
@@ -225,7 +236,7 @@ class ProductCarousel {
   }
 
   // Under the names: the middle product's price, its maker ("Shop · City") and the stock in words, the kit's Add to
-  // bag button (a sold-out product has none) and View.
+  // bag button (a sold-out product has none), View, and the kit's heart to save it to the wishlist.
   showDetails() {
     const product = this.products[this.current];
     if (!product) return this.details.replaceChildren();
@@ -244,9 +255,19 @@ class ProductCarousel {
     const view = make('a', 'button secondary', 'View');
     view.href = product.url || '/product/' + product.id;
     view.setAttribute('aria-label', 'View ' + product.name);
-    buttons.append(view);
+    buttons.append(view, this.makeHeart(product));
     this.details.replaceChildren(name, price, shop, stock, buttons);
     if (hadFocus) this.section.focus(); // keyboard users stay inside the carousel
+  }
+
+  // The kit's wishlist heart for one product, remembered in this browser (readWishlist and setWishlisted in kit.js).
+  makeHeart(product) {
+    const slot = make('span', 'heart-slot');
+    mountKit(slot, IK.WishlistHeart, {
+      onMedia: true, defaultPressed: readWishlist().includes(product.id),
+      onChange: (saved) => setWishlisted(product.id, saved), label: 'Save ' + product.name,
+    });
+    return slot;
   }
 
   // ---------- Turning by itself ----------
@@ -279,7 +300,7 @@ class ProductCarousel {
     if (Date.now() < this.ignoreClicksUntil) return; // the end of a swipe is not a click
     const offset = this.offsetOf(index);
     if (offset !== 0) return this.turn(offset, true);
-    if (Date.now() - this.turnedAt < CAROUSEL_TURN_MS) return;
+    if (Date.now() - this.turnedAt < carouselTurnMs()) return;
     location.href = this.products[index].url || '/product/' + this.products[index].id;
   }
 
