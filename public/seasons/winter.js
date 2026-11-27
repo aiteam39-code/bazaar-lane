@@ -2,7 +2,7 @@
 // 1. Snow falls over the page on one canvas that never takes a click; the flakes drift away from the mouse or a finger.
 //    It pauses when the tab is hidden, never runs with reduced motion, and the footer's "Snow" switch turns it off
 //    (remembered in this browser as bazaarSnow).
-// 2. The home page gets a "Handmade for Christmas" row at the top: real products whose names say Christmas.
+// 2. The home page gets one big Christmas gift-box tile at the top that opens the Christmas shop (the category).
 (function winterSeason() {
   const SNOW_KEY = 'bazaarSnow';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -102,26 +102,26 @@
   async function christmasRow() {
     const banner = document.querySelector('.home-banner');
     if (location.pathname !== '/' || !banner || document.querySelector('.winter-row')) return;
-    let products = [];
+    // One big gift-box tile for the whole Christmas shop: its photo comes from the Christmas category, and a click
+    // opens the category page with every Christmas product.
+    let tile = null;
     try {
-      products = (await api('GET', '/api/products?search=christmas&limit=40')).products
-        .filter((product) => /christmas/i.test(product.name));
+      tile = (await api('GET', '/api/home')).categories.find((category) => category.slug === 'christmas');
     } catch (e) {
       return;
     }
-    if (products.length === 0) return; // never a fake row
-    const section = make('section', 'winter-row');
-    section.setAttribute('aria-labelledby', 'winter-row-title');
-    const head = make('div', 'section-head');
-    const title = make('h2', '', 'Handmade for Christmas');
-    title.id = 'winter-row-title';
-    const all = make('a', 'see-all', 'See all');
-    all.href = '/search?search=christmas';
-    head.append(title, all);
-    const grid = make('div', 'product-grid');
-    grid.append(...products.slice(0, 8).map(productCard));
-    section.append(head, grid);
-    banner.after(section);
+    if (!tile) return; // no Christmas products to show: no tile
+    const link = make('a', 'winter-row christmas-tile');
+    link.href = '/category/christmas';
+    const words = make('div', 'christmas-tile-words');
+    words.append(make('h2', '', 'The Christmas shop'),
+      make('p', '', `${tile.product_count} handmade gifts: crochet Santas, star lanterns, plum cake and more.`),
+      make('span', 'button christmas-tile-open', 'Open the Christmas shop'));
+    const photo = make('img', 'christmas-tile-photo');
+    photo.src = tile.photo_url || placeholderArt(tile.id);
+    photo.alt = 'A gift box with a red bow';
+    link.append(words, photo);
+    banner.after(link);
   }
 
   document.addEventListener('DOMContentLoaded', () => {

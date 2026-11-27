@@ -70,3 +70,15 @@ html[data-season="winter"][data-theme="night"] .home-banner { background: linear
 html[data-season="winter"] .winter-row { margin: var(--space-5) 0; }
 html[data-season="winter"] .snow-switch { display: block; margin: var(--space-3) auto 0; }
 @media (prefers-reduced-motion: reduce) { .winter-snow { display: none; } }
+
+/* The Christmas gift-box tile on the home page: one big card that opens the Christmas shop. */
+.christmas-tile { display: grid; grid-template-columns: 1fr; gap: var(--space-4); align-items: center; padding: var(--space-5);
+  border-radius: var(--radius-lg); text-decoration: none; color: #ffffff;
+  background: linear-gradient(135deg, #8e1b2e 0%, #c2263f 55%, #1f6b78 100%); box-shadow: var(--shadow-card); }
+.christmas-tile h2 { margin: 0 0 var(--space-2); color: #ffffff; }
+.christmas-tile p { margin: 0 0 var(--space-4); color: #fde8ec; }
+.christmas-tile-open { background: #ffffff; color: #8e1b2e; }
+.christmas-tile-photo { width: 100%; max-width: 360px; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-md); justify-self: center; }
+.christmas-tile:hover .christmas-tile-photo { transform: translateY(-3px); }
+@media (min-width: 800px) { .christmas-tile { grid-template-columns: 1.2fr 1fr; } }
+@media (prefers-reduced-motion: reduce) { .christmas-tile:hover .christmas-tile-photo { transform: none; } }

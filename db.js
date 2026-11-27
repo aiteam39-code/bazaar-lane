@@ -872,6 +872,14 @@ async function addMakerShops() {
   }
 }
 
+// The Christmas tile's photo changed to a gift box with a red bow: done once (the settings row remembers it), so the
+// sample photo fills it again. A photo the admin uploads later is never touched.
+async function useNewChristmasTilePhoto() {
+  if (await db.get("SELECT 1 FROM settings WHERE key = 'christmas_tile_photo_v2'")) return;
+  await db.run("UPDATE categories SET photo = NULL WHERE name = 'Christmas'");
+  await db.run("INSERT INTO settings (key, value) VALUES ('christmas_tile_photo_v2', 'done')");
+}
+
 // The promo cards, added once (when there are none).
 async function addSamplePromoCards() {
   if ((await db.get('SELECT COUNT(*) AS n FROM promo_cards')).n > 0) return;
@@ -1031,6 +1039,7 @@ function ready() {
         await addSampleShopDetails();
         const isNew = await fillSampleDataIfEmpty();
         await addMakerShops();
+        await useNewChristmasTilePhoto();
         await addSamplePhotos();
         return isNew;
       });

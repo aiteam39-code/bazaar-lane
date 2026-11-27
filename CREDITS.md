@@ -37,3 +37,21 @@ Every photo below is from Unsplash, used under the free Unsplash License (https:
 | Product: Cotton Cleaning Cloths | a stack of folded cloths with a cotton ball on top | Moonstarious Project | https://unsplash.com/photos/a-stack-of-folded-cloths-with-a-cotton-ball-on-top-wl2TODALiAY |
 
 Products without their own photo yet show their category's photo until the seller uploads one.
+
+Christmas photos (Unsplash, free licence, downloaded 2026-11-27):
+
+| Where it goes | Subject | Link |
+|---|---|---|
+| Category tile: Christmas | White gift box with a red bow | https://unsplash.com/photos/NrAv5nwdIrw |
+| Product: Christmas Gingerbread Cookies | Tray of decorated Christmas cookies | https://unsplash.com/photos/Uob05epD1qg |
+| Product: Christmas Hot Chocolate Mix | Cozy Christmas scene with hot chocolate | https://unsplash.com/photos/ZmXHtG8anyM |
+| Product: Christmas Plum Cake | Fruit cake with a red and white ribbon | https://unsplash.com/photos/VAZkd7zIl3U |
+| Product: Christmas Table Runner | Festive Christmas table setting | https://unsplash.com/photos/D0Nu7XKi2aE |
+| Product: Cinnamon Christmas Soy Candle | Candle with cinnamon sticks | https://unsplash.com/photos/fL59ucJ2ixY |
+| Product: Clay Christmas Tree Tealight Holder | Christmas decoration with candles | https://unsplash.com/photos/VS89PMlz308 |
+| Product: Crochet Christmas Santa Doll | Crocheted Santa figure | https://unsplash.com/photos/UhoDp1unaNg |
+| Product: Crochet Christmas Tree Ornaments | Knitted ornament on a Christmas tree | https://unsplash.com/photos/hE9SRJHDfME |
+| Product: Crochet Christmas Snowman | Snowman ornament on a Christmas tree | https://unsplash.com/photos/YrLIHks9SEc |
+| Product: Terracotta Christmas Star Lantern | Lit paper star lantern | https://unsplash.com/photos/9IsGDEmJmQQ |
+| Product: Handloom Christmas Stocking | Red and white Christmas stockings | https://unsplash.com/photos/paSqTlm3DsA |
+| Product: Madhubani Christmas Cards | Happy Christmas greeting card | https://unsplash.com/photos/bp8Mi1g_VqQ |
