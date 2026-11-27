@@ -196,7 +196,7 @@ async function priceCart(lines, gifts = {}) {
 // A product with its shop's details, or undefined.
 async function findProductForCart(productId) {
   return db.get(`
-    SELECT products.id, products.name, products.photo, products.price, products.stock,
+    SELECT products.id, products.name, COALESCE(NULLIF(products.photo, ''), (SELECT cat.photo FROM categories cat WHERE cat.id = products.category_id)) AS photo, products.price, products.stock,
            products.active, products.deleted, products.hidden, products.seller_id,
            sellers.shop_name, sellers.slug AS shop_slug, sellers.city AS shop_city, sellers.status AS shop_status,
            sellers.shipping_fee, sellers.free_shipping_over, sellers.dispatch_days, sellers.gift_wrap_price

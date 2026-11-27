@@ -44,7 +44,7 @@ router.get('/api/home/rows', async (req, res) => {
   const rows = [];
   for (const tile of tiles.slice(offset, offset + limit)) {
     const products = await db.all(`
-      SELECT products.id, products.name, products.photo, products.price, products.size_label, products.giftable,
+      SELECT products.id, products.name, COALESCE(NULLIF(products.photo, ''), (SELECT cat.photo FROM categories cat WHERE cat.id = products.category_id)) AS photo, products.price, products.size_label, products.giftable,
              CASE WHEN products.stock BETWEEN 1 AND 5 THEN products.stock END AS few_left,
              sellers.shop_name, sellers.slug AS shop_slug, sellers.city, sellers.dispatch_days
       FROM products JOIN sellers ON sellers.id = products.seller_id

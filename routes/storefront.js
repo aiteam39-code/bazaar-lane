@@ -26,7 +26,7 @@ const RATING_FIELDS = `
 // The product fields customers get: no stock numbers (only "few_left" when it is 5 or fewer), no seller email or
 // phone, nothing about hiding.
 const CUSTOMER_FIELDS = `
-  products.id, products.name, products.description, products.photo, products.price, products.created_at, products.giftable,
+  products.id, products.name, products.description, COALESCE(NULLIF(products.photo, ''), (SELECT cat.photo FROM categories cat WHERE cat.id = products.category_id)) AS photo, products.price, products.created_at, products.giftable,
   products.size_label, sellers.dispatch_days,
   products.stock = 0 AS sold_out, CASE WHEN products.stock BETWEEN 1 AND ${FEW_LEFT} THEN products.stock END AS few_left,
   products.category_id, categories.name AS category_name,
