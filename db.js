@@ -490,7 +490,7 @@ const MORE_CATEGORIES = [
   ['Breakfast and spreads', 800], ['Home decor', 1000], ['Bags and accessories', 1200], ['Jewellery', 1500],
   ['Beauty and personal care', 1200], ['Health and wellness', 1000], ['Baby care', 1000], ['Pet care', 1000],
   ['Stationery and prints', 1200], ['Toys and games', 1200], ['Cleaning essentials', 1000], ['Plants and garden', 1000],
-  ['Festive and puja', 1500],
+  ['Festive and puja', 1500], ['Christmas', 1500],
 ];
 // [shop, category, name, price in rupees, stock, low-stock level, size, description, giftable]
 const MORE_PRODUCTS = [
@@ -715,18 +715,18 @@ const MAKER_PRODUCTS = [
   ['Bagru Block Prints', 'Clothing', 'Red Hand-block Mulmul Saree', 1539, 10, 2, '5.5 m with blouse piece', 'A soft cotton mulmul saree hand-block printed in Bagru in red and black.', 1],
   ['Bagru Block Prints', 'Clothing', 'Indigo Bagru Print Saree', 1239, 10, 2, '5.5 m with blouse piece', 'A mulmul cotton saree in indigo with hand-block prints in natural dyes.', 1],
   ['Bagru Block Prints', 'Clothing', 'Block-printed Cotton Dupatta', 590, 20, 4, '2.25 m', 'A light cotton dupatta with a small Bagru motif all over.', 1],
-  ['Woolly Hook Studio', 'Toys and games', 'Crochet Christmas Santa Doll', 549, 15, 3, '22 cm', 'A soft crochet Santa with a red coat and a woolly beard.', 1],
-  ['Woolly Hook Studio', 'Home decor', 'Crochet Christmas Tree Ornaments', 449, 20, 4, 'Set of 6', 'Stars, bells and snowflakes in crochet, with hanging loops.', 1],
-  ['Woolly Hook Studio', 'Gifts and crafts', 'Crochet Christmas Snowman', 399, 15, 3, '15 cm', 'A cheerful crochet snowman with a knitted scarf.', 1],
-  ['Terracotta Corner', 'Home decor', 'Clay Christmas Tree Tealight Holder', 499, 12, 3, '18 cm', 'A cut-work clay tree that glows when a tealight sits inside.', 1],
-  ['Terracotta Corner', 'Home decor', 'Terracotta Christmas Star Lantern', 650, 10, 2, '25 cm', 'A hanging clay star lantern for doors and windows.', 1],
-  ['Handloom Nook', 'Gifts and crafts', 'Handloom Christmas Stocking', 349, 25, 5, '45 cm', 'A red and white woven stocking with a hanging loop.', 1],
-  ['Handloom Nook', 'Home and kitchen', 'Christmas Table Runner', 699, 12, 3, '150 cm', 'A woven runner in deep green and berry red.', 1],
-  ['Chilli Lane Pantry', 'Snacks and sweets', 'Christmas Plum Cake', 549, 20, 4, '500 g', 'A rich fruit cake with rum-soaked raisins and nuts.', 1],
-  ['Thekua Ghar', 'Snacks and sweets', 'Christmas Gingerbread Cookies', 299, 25, 5, 'Box of 12', 'Spiced gingerbread stars and trees, iced by hand.', 1],
-  ['Chilli Lane Pantry', 'Tea and coffee', 'Christmas Hot Chocolate Mix', 349, 20, 4, '250 g', 'Cocoa with cinnamon and a pinch of nutmeg.', 1],
-  ['Mithila Rang', 'Stationery and prints', 'Madhubani Christmas Cards', 299, 30, 6, 'Set of 6', 'Christmas cards hand-painted in the Madhubani style.', 1],
-  ['Neem Leaf Naturals', 'Home decor', 'Cinnamon Christmas Soy Candle', 399, 25, 5, '200 g', 'A soy candle in a clay cup that smells of cinnamon and orange.', 1],
+  ['Woolly Hook Studio', 'Christmas', 'Crochet Christmas Santa Doll', 549, 15, 3, '22 cm', 'A soft crochet Santa with a red coat and a woolly beard.', 1],
+  ['Woolly Hook Studio', 'Christmas', 'Crochet Christmas Tree Ornaments', 449, 20, 4, 'Set of 6', 'Stars, bells and snowflakes in crochet, with hanging loops.', 1],
+  ['Woolly Hook Studio', 'Christmas', 'Crochet Christmas Snowman', 399, 15, 3, '15 cm', 'A cheerful crochet snowman with a knitted scarf.', 1],
+  ['Terracotta Corner', 'Christmas', 'Clay Christmas Tree Tealight Holder', 499, 12, 3, '18 cm', 'A cut-work clay tree that glows when a tealight sits inside.', 1],
+  ['Terracotta Corner', 'Christmas', 'Terracotta Christmas Star Lantern', 650, 10, 2, '25 cm', 'A hanging clay star lantern for doors and windows.', 1],
+  ['Handloom Nook', 'Christmas', 'Handloom Christmas Stocking', 349, 25, 5, '45 cm', 'A red and white woven stocking with a hanging loop.', 1],
+  ['Handloom Nook', 'Christmas', 'Christmas Table Runner', 699, 12, 3, '150 cm', 'A woven runner in deep green and berry red.', 1],
+  ['Chilli Lane Pantry', 'Christmas', 'Christmas Plum Cake', 549, 20, 4, '500 g', 'A rich fruit cake with rum-soaked raisins and nuts.', 1],
+  ['Thekua Ghar', 'Christmas', 'Christmas Gingerbread Cookies', 299, 25, 5, 'Box of 12', 'Spiced gingerbread stars and trees, iced by hand.', 1],
+  ['Chilli Lane Pantry', 'Christmas', 'Christmas Hot Chocolate Mix', 349, 20, 4, '250 g', 'Cocoa with cinnamon and a pinch of nutmeg.', 1],
+  ['Mithila Rang', 'Christmas', 'Madhubani Christmas Cards', 299, 30, 6, 'Set of 6', 'Christmas cards hand-painted in the Madhubani style.', 1],
+  ['Neem Leaf Naturals', 'Christmas', 'Cinnamon Christmas Soy Candle', 399, 25, 5, '200 g', 'A soy candle in a clay cup that smells of cinnamon and orange.', 1],
   ['Woolly Hook Studio', 'Baby care', 'Crochet Baby Rattle Set', 399, 15, 3, 'Set of 2', 'Soft crochet rattles with a gentle bell inside.', 1],
   ['Handloom Nook', 'Baby care', 'Organic Cotton Baby Jhabla Set', 549, 20, 4, '0 to 6 months, set of 3', 'Breathable front-open cotton jhablas for newborns.', 1],
   ['Handloom Nook', 'Baby care', 'Muslin Baby Wrap Blanket', 699, 15, 3, '110 x 110 cm', 'A four-layer muslin blanket that gets softer with every wash.', 1],
@@ -850,6 +850,13 @@ async function addMakerShops() {
         await db.run("INSERT INTO users (email, password_hash, role, seller_id, created_at) VALUES (?, ?, 'seller', ?, ?)",
           shop.email, hashPassword(shop.password), id, nowIso());
       }
+    }
+  }
+  // The Christmas products live in their own Christmas category (moved there once, in databases that had them elsewhere).
+  const christmas = await db.get("SELECT id FROM categories WHERE name = 'Christmas'");
+  if (christmas) {
+    for (const [, category, name] of MAKER_PRODUCTS) {
+      if (category === 'Christmas') await db.run('UPDATE products SET category_id = ? WHERE name = ? AND category_id <> ?', christmas.id, name, christmas.id);
     }
   }
   // The products, for these shops and the first sample shops alike (each added once, never twice).

@@ -417,7 +417,7 @@ async function runChecks() {
     expect((await count("SELECT COUNT(*) AS n FROM sellers WHERE status = 'pending'")) === 1, 'there should be 1 pending shop');
     const firstFour = (await db.all("SELECT commission_bps FROM categories WHERE name IN ('Food and spices', 'Home and kitchen', 'Clothing', 'Gifts and crafts')")).map((row) => row.commission_bps);
     expect(firstFour.length === 4 && new Set(firstFour).size === 4, `the first 4 categories should have 4 different rates, found ${firstFour}`);
-    expect((await count('SELECT COUNT(*) AS n FROM categories')) === 21, `there should be 21 categories, found ${await count('SELECT COUNT(*) AS n FROM categories')}`);
+    expect((await count('SELECT COUNT(*) AS n FROM categories')) === 22, `there should be 22 categories, found ${await count('SELECT COUNT(*) AS n FROM categories')}`);
     const products = await count('SELECT COUNT(*) AS n FROM products');
     expect(products === 193, `there should be 18 + 34 + 141 = 193 sample products, found ${products}`);
     const empty = (await db.all(`SELECT name FROM categories WHERE NOT EXISTS (SELECT 1 FROM products JOIN sellers ON sellers.id = products.seller_id
@@ -763,7 +763,7 @@ async function runChecks() {
 
   await check('C1', 'The home page lists only active shops and the categories; search finds a product by part of its name, in any letter case, and only shows products that can be bought', async () => {
     const categories = (await newBrowser().call('GET', '/api/categories')).data.categories;
-    expect(categories.length === 21 && categories.every((c) => Number.isInteger(c.product_count)), 'the 21 categories should be listed, each with a count');
+    expect(categories.length === 22 && categories.every((c) => Number.isInteger(c.product_count)), 'the 22 categories should be listed, each with a count');
     const shops = await homePageShops();
     expect(shops.includes('Chilli Lane Pantry') && !shops.includes('Brass Bell Crafts') && !shops.includes('ZZ Test Shop Two'), 'only active shops should be listed');
     const chilli = await searchNames({ search: 'CHILLI' });
