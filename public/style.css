@@ -781,3 +781,6 @@ legend { font: var(--text-type-label); padding: 0 var(--space-1); }
 .side-menu .footer-extras { display: grid; gap: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-4); }
 .footer-line { max-width: 1120px; margin: 0 auto; text-align: center; color: var(--ink-muted); font: var(--text-type-caption); }
 @media (prefers-reduced-motion: reduce) { .side-menu { animation: none; } }
+.side-menu .footer-extras { grid-template-columns: 1fr; }
+.side-menu .footer-extras > * { width: 100%; max-width: none; margin: 0; }
+.side-menu .footer-extras button { justify-self: start; }
