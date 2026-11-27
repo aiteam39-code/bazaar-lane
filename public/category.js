@@ -78,10 +78,11 @@ async function showList(category) {
   await loadProductList(document.getElementById('products'), { category: category.id }, document.getElementById('result-count'));
 }
 
-// One chip per category, with how many of its products can be bought. A plain click swings that category in.
+// One small chip per category in a single sideways-scrolling strip (no counts, never a wall of buttons).
+// A plain click swings that category in.
 function showChips(chosenSlug) {
   const chips = allCategories.map((category) => {
-    const link = make('a', category.slug === chosenSlug ? 'chip active' : 'chip', `${category.name} (${category.product_count})`);
+    const link = make('a', category.slug === chosenSlug ? 'chip active' : 'chip', category.name);
     link.href = '/category/' + category.slug + (showsList() ? '?view=list' : '');
     if (category.slug === chosenSlug) link.setAttribute('aria-current', 'page');
     link.addEventListener('click', (event) => {
@@ -93,7 +94,10 @@ function showChips(chosenSlug) {
     });
     return link;
   });
-  document.getElementById('categories').replaceChildren(...chips);
+  const strip = document.getElementById('categories');
+  strip.replaceChildren(...chips);
+  const active = strip.querySelector('.active');
+  if (active) strip.scrollLeft = active.offsetLeft - 16; // the chosen category is in view
 }
 
 // "See all as a list" (with filters), or "See them turn" when the list is showing.

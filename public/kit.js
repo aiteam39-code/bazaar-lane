@@ -251,7 +251,6 @@ function starRow(rating) {
 // range from the open shops' dispatch days, and the customer's own city or PIN code, saved in this browser), a big
 // search box whose example word changes every 3 seconds, Log in, and the bag with its rolling count and total (greyed out when empty). Under them:
 // the Categories menu, "Sell on Bazaar Lane" and My orders.
-const PLACE_KEY = 'bazaarPlace';
 function buildCustomerHeader(host) {
   const bar = make('div', 'bar shop-bar');
   const brand = make('a', 'brand', siteName());
@@ -327,48 +326,11 @@ function compactOnScroll(host) {
   update();
 }
 
-// "Delivery in 4 to 8 days" and the customer's place ("Jaipur 302001"), with a small form to change the place.
+// "Delivery in 4 to 8 days" (the real range from the open shops' dispatch days).
 function deliveryLine() {
-  const line = make('details', 'delivery-line');
-  const summary = make('summary', '');
-  const days = make('strong', 'delivery-days', 'Delivery in a few days');
-  const place = make('span', 'delivery-place', readPlace() || 'Add your city or PIN code');
-  summary.append(days, place);
-  const form = make('form', 'place-form');
-  const label = make('label', '', 'Your city or 6-digit PIN code');
-  const input = make('input');
-  input.id = 'place-box';
-  input.maxLength = 40;
-  input.value = readPlace();
-  input.autocomplete = 'postal-code';
-  label.htmlFor = input.id;
-  const save = make('button', 'secondary', 'Save');
-  save.type = 'submit';
-  const note = make('p', 'small muted', 'Kept only in this browser. Each shop still shows its own delivery days.');
-  form.append(label, input, save, note);
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const text = input.value.trim().replace(/\s+/g, ' ').slice(0, 40);
-    try {
-      if (text) localStorage.setItem(PLACE_KEY, text);
-      else localStorage.removeItem(PLACE_KEY);
-    } catch (e) {
-      // Saving is blocked: it still shows on this page.
-    }
-    place.textContent = text || 'Add your city or PIN code';
-    line.open = false;
-  });
-  line.append(summary, form);
+  const line = make('p', 'delivery-line');
+  line.append(make('strong', 'delivery-days', 'Delivery in a few days'));
   return line;
-}
-
-// The customer's city or PIN code saved in this browser, or ''.
-function readPlace() {
-  try {
-    return localStorage.getItem(PLACE_KEY) || '';
-  } catch (e) {
-    return '';
-  }
 }
 
 // Fills the real delivery days and the search box's example words.

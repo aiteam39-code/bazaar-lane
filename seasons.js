@@ -37,7 +37,7 @@ function hasFiles(key) {
 // The season that is on right now, or null.
 async function currentSeason() {
   const now = localStamp(seasonNow());
-  const season = await db.get('SELECT * FROM seasons WHERE enabled = 1 AND starts_at <= ? AND ends_at >= ? ORDER BY starts_at LIMIT 1', now, now);
+  const season = await db.get('SELECT * FROM seasons WHERE enabled = 1 AND starts_at <= ? AND ends_at >= ? ORDER BY starts_at DESC LIMIT 1', now, now); // the later-starting (more specific) season wins, e.g. Christmas inside Winter
   return season && hasFiles(season.key) ? season : null;
 }
 

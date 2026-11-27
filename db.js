@@ -683,6 +683,12 @@ const MAKER_SHOPS = [
   { shop_name: 'Bagru Block Prints', slug: 'bagru-block-prints', city: 'Jaipur', dispatch_days: 3, return_days: 10, phone: '9000000205',
     description: 'Hand-block printed mulmul sarees and dupattas in natural dyes.', shipping_fee: 0, free_shipping_over: null,
     email: 'bagru@bazaarlane.test', password: 'bagru-test-2026' },
+  { shop_name: 'Neem Leaf Naturals', slug: 'neem-leaf-naturals', city: 'Kannauj', dispatch_days: 2, return_days: 7, phone: '9000000206',
+    description: 'Cold-process soaps, hair oils, ubtan and attars made in small batches.', shipping_fee: 5000, free_shipping_over: 49900,
+    email: 'neem@bazaarlane.test', password: 'neemleaf-test-2026' },
+  { shop_name: 'Green Thumb Nursery', slug: 'green-thumb-nursery', city: 'Pune', dispatch_days: 3, return_days: 7, phone: '9000000207',
+    description: 'Healthy indoor plants, seeds and garden tools, packed with care.', shipping_fee: 7000, free_shipping_over: 79900,
+    email: 'plants@bazaarlane.test', password: 'greenthumb-test-2026' },
 ];
 // [shop, category, name, price in rupees, stock, low-stock level, size, description, giftable]
 const MAKER_PRODUCTS = [
@@ -709,6 +715,112 @@ const MAKER_PRODUCTS = [
   ['Bagru Block Prints', 'Clothing', 'Red Hand-block Mulmul Saree', 1539, 10, 2, '5.5 m with blouse piece', 'A soft cotton mulmul saree hand-block printed in Bagru in red and black.', 1],
   ['Bagru Block Prints', 'Clothing', 'Indigo Bagru Print Saree', 1239, 10, 2, '5.5 m with blouse piece', 'A mulmul cotton saree in indigo with hand-block prints in natural dyes.', 1],
   ['Bagru Block Prints', 'Clothing', 'Block-printed Cotton Dupatta', 590, 20, 4, '2.25 m', 'A light cotton dupatta with a small Bagru motif all over.', 1],
+  ['Woolly Hook Studio', 'Baby care', 'Crochet Baby Rattle Set', 399, 15, 3, 'Set of 2', 'Soft crochet rattles with a gentle bell inside.', 1],
+  ['Handloom Nook', 'Baby care', 'Organic Cotton Baby Jhabla Set', 549, 20, 4, '0 to 6 months, set of 3', 'Breathable front-open cotton jhablas for newborns.', 1],
+  ['Handloom Nook', 'Baby care', 'Muslin Baby Wrap Blanket', 699, 15, 3, '110 x 110 cm', 'A four-layer muslin blanket that gets softer with every wash.', 1],
+  ['Bagru Block Prints', 'Baby care', 'Cotton Baby Nappies', 449, 25, 5, 'Pack of 6', 'Reusable cloth nappies in soft cotton.', 0],
+  ['Neem Leaf Naturals', 'Baby care', 'Baby Massage Oil', 299, 30, 6, '200 ml', 'Cold-pressed sesame and almond oil for a gentle daily massage.', 0],
+  ['Woolly Hook Studio', 'Baby care', 'Crochet Baby Mittens', 249, 20, 4, '0 to 6 months', 'Warm crochet mittens with a drawstring cuff.', 1],
+  ['Handloom Nook', 'Bags and accessories', 'Jute Shopping Tote', 349, 30, 6, '1 bag', 'A sturdy jute tote with cotton handles for daily shopping.', 0],
+  ['Bagru Block Prints', 'Bags and accessories', 'Block-printed Laptop Sleeve', 799, 12, 3, 'Fits 14 inch', 'A padded cotton sleeve with a Bagru print.', 1],
+  ['Mithila Rang', 'Bags and accessories', 'Madhubani Painted Clutch', 990, 8, 2, '1 clutch', 'A silk clutch hand-painted with a Madhubani lotus.', 1],
+  ['Handloom Nook', 'Bags and accessories', 'Cotton Lunch Bag', 299, 25, 5, '1 bag', 'An insulated cotton lunch bag with a zip.', 0],
+  ['Woolly Hook Studio', 'Bags and accessories', 'Crochet Mobile Pouch', 349, 20, 4, 'Fits most phones', 'A crochet sling pouch for your phone and cards.', 1],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Neem and Tulsi Soap', 149, 50, 10, '100 g', 'A cold-process soap with neem and tulsi for daily use.', 0],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Rose and Sandalwood Soap', 179, 40, 8, '100 g', 'A gentle soap with rose petals and sandalwood.', 1],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Bhringraj Hair Oil', 349, 30, 6, '200 ml', 'Coconut oil slow-cooked with bhringraj and amla.', 0],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Haldi Chandan Ubtan', 249, 30, 6, '100 g', 'A face pack of turmeric, sandalwood and gram flour.', 1],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Rose Attar Roll-on', 399, 20, 4, '8 ml', 'A traditional rose attar made in Kannauj.', 1],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Beeswax Lip Balm', 149, 40, 8, '10 g', 'Beeswax and shea butter for dry lips.', 1],
+  ['Neem Leaf Naturals', 'Beauty and personal care', 'Aloe Vera Gel', 199, 30, 6, '150 g', 'Fresh aloe vera gel for skin and hair.', 0],
+  ['Chilli Lane Pantry', 'Breakfast and spreads', 'Mixed Fruit Jam', 220, 25, 5, '250 g', 'Jam from seasonal fruits with no added colour.', 0],
+  ['Chilli Lane Pantry', 'Breakfast and spreads', 'Wild Forest Honey', 360, 20, 4, '500 g', 'Raw honey collected from forest hives.', 1],
+  ['Thekua Ghar', 'Breakfast and spreads', 'Roasted Poha', 90, 40, 8, '500 g', 'Thick poha flakes, ready for a quick breakfast.', 0],
+  ['Thekua Ghar', 'Breakfast and spreads', 'Millet Muesli', 280, 25, 5, '400 g', 'Ragi and jowar flakes with nuts and seeds.', 0],
+  ['Chilli Lane Pantry', 'Breakfast and spreads', 'Almond Butter', 420, 15, 3, '250 g', 'Roasted almonds ground smooth, nothing added.', 0],
+  ['Chilli Lane Pantry', 'Breakfast and spreads', 'Amla Murabba', 240, 20, 4, '500 g', 'Whole gooseberries slow-cooked in jaggery syrup.', 1],
+  ['Handloom Nook', 'Cleaning essentials', 'Microfibre Kitchen Cloths', 249, 30, 6, 'Pack of 4', 'Quick-drying cloths that wipe without streaks.', 0],
+  ['Terracotta Corner', 'Cleaning essentials', 'Coconut Coir Brush', 149, 30, 6, '1 brush', 'A stiff coir brush for clay pots and tiles.', 0],
+  ['Neem Leaf Naturals', 'Cleaning essentials', 'Soapnut Dish Wash Liquid', 199, 30, 6, '500 ml', 'A gentle dish wash made from soapnuts.', 0],
+  ['Neem Leaf Naturals', 'Cleaning essentials', 'Neem Floor Cleaner', 229, 25, 5, '1 litre', 'A plant-based floor cleaner with neem oil.', 0],
+  ['Handloom Nook', 'Cleaning essentials', 'Cotton Mop Refill', 299, 20, 4, '1 refill', 'A thick cotton mop head that fits most handles.', 0],
+  ['Terracotta Corner', 'Cleaning essentials', 'Loofah Dish Scrubbers', 129, 40, 8, 'Pack of 3', 'Natural loofah scrubbers that compost after use.', 0],
+  ['Bagru Block Prints', 'Clothing', 'Cotton Kurta Set', 1299, 12, 3, 'Sizes S to XL', 'A block-printed kurta with straight pants.', 1],
+  ['Handloom Nook', 'Clothing', 'Handloom Cotton Shirt', 999, 12, 3, 'Sizes S to XL', 'A breathable handloom shirt for men.', 0],
+  ['Bagru Block Prints', 'Clothing', 'Block-printed Night Suit', 899, 15, 3, 'Sizes S to XL', 'A soft cotton night suit with a small print.', 0],
+  ['Handloom Nook', 'Clothing', 'Khadi Kurta', 849, 15, 3, 'Sizes S to XL', 'A hand-spun khadi kurta for everyday wear.', 0],
+  ['Terracotta Corner', 'Festive and puja', 'Brass-finish Puja Bell', 349, 15, 3, '1 piece', 'A clay bell with a brass finish for daily puja.', 1],
+  ['Chooda Lane', 'Festive and puja', 'Decorated Rakhi Set', 299, 30, 6, 'Set of 3', 'Handmade rakhis with beads and threads.', 1],
+  ['Mithila Rang', 'Festive and puja', 'Hand-painted Kalash', 599, 10, 2, '15 cm', 'A clay kalash painted with Madhubani motifs.', 1],
+  ['Terracotta Corner', 'Festive and puja', 'Dhoop Stick Holder', 199, 25, 5, '1 piece', 'A clay holder for dhoop sticks and cones.', 0],
+  ['Neem Leaf Naturals', 'Festive and puja', 'Cow Dung Dhoop Cones', 149, 40, 8, 'Pack of 40', 'Natural dhoop cones with camphor and guggal.', 0],
+  ['Chilli Lane Pantry', 'Food and spices', 'Mango Pickle', 220, 30, 6, '500 g', 'Raw mango pieces in mustard oil and spices.', 1],
+  ['Chilli Lane Pantry', 'Food and spices', 'Lemon Pickle', 190, 30, 6, '400 g', 'Sweet and sour lemon pickle, sun-cured.', 0],
+  ['Chilli Lane Pantry', 'Food and spices', 'Garam Masala', 140, 40, 8, '100 g', 'Freshly ground whole spices for curries.', 0],
+  ['Chilli Lane Pantry', 'Food and spices', 'Mixed Vegetable Pickle', 210, 25, 5, '400 g', 'Carrot, cauliflower and chilli in mustard oil.', 0],
+  ['Thekua Ghar', 'Fresh and organic', 'Organic Brown Rice', 180, 30, 6, '1 kg', 'Unpolished brown rice from small farms.', 0],
+  ['Thekua Ghar', 'Fresh and organic', 'Cold-pressed Mustard Oil', 290, 25, 5, '1 litre', 'Kachi ghani mustard oil, pressed slowly.', 0],
+  ['Thekua Ghar', 'Fresh and organic', 'Organic Moong Dal', 160, 30, 6, '1 kg', 'Split green gram, cleaned and sorted by hand.', 0],
+  ['Chilli Lane Pantry', 'Fresh and organic', 'A2 Cow Ghee', 899, 15, 3, '500 ml', 'Ghee churned the bilona way from curd.', 1],
+  ['Thekua Ghar', 'Fresh and organic', 'Organic Wheat Atta', 120, 40, 8, '2 kg', 'Stone-ground whole wheat flour.', 0],
+  ['Thekua Ghar', 'Fresh and organic', 'Ragi Flour', 110, 30, 6, '1 kg', 'Finger millet flour for rotis and porridge.', 0],
+  ['Mithila Rang', 'Gifts and crafts', 'Madhubani Painted Bookmark Set', 199, 30, 6, 'Set of 4', 'Hand-painted paper bookmarks with tassels.', 1],
+  ['Terracotta Corner', 'Gifts and crafts', 'Clay Ganesha Idol', 450, 12, 3, '12 cm', 'A small hand-shaped Ganesha in natural clay.', 1],
+  ['Woolly Hook Studio', 'Gifts and crafts', 'Crochet Sunflower Pot', 399, 15, 3, '1 pot', 'A forever sunflower in a small pot.', 1],
+  ['Chilli Lane Pantry', 'Gifts and crafts', 'Festive Sweets Hamper', 999, 10, 2, '1 hamper', 'Thekua, khaja and tilkut in a reusable basket.', 1],
+  ['Neem Leaf Naturals', 'Health and wellness', 'Ashwagandha Powder', 249, 30, 6, '100 g', 'Pure ashwagandha root powder.', 0],
+  ['Thekua Ghar', 'Health and wellness', 'Moringa Leaf Powder', 199, 30, 6, '100 g', 'Shade-dried moringa leaves, finely powdered.', 0],
+  ['Neem Leaf Naturals', 'Health and wellness', 'Triphala Churna', 149, 30, 6, '100 g', 'A classic blend of amla, haritaki and bibhitaki.', 0],
+  ['Chilli Lane Pantry', 'Health and wellness', 'Kadha Immunity Mix', 220, 25, 5, '100 g', 'Tulsi, ginger, pepper and cinnamon for a warm kadha.', 0],
+  ['Thekua Ghar', 'Health and wellness', 'Chia and Flax Seed Mix', 260, 25, 5, '250 g', 'Roasted flax and chia seeds for salads and smoothies.', 0],
+  ['Neem Leaf Naturals', 'Health and wellness', 'Pain Relief Herbal Oil', 299, 20, 4, '100 ml', 'Mustard oil with camphor, ajwain and garlic.', 0],
+  ['Terracotta Corner', 'Home and kitchen', 'Clay Dahi Handi', 320, 15, 3, '1 litre', 'A clay pot that sets thick, cool curd.', 0],
+  ['Terracotta Corner', 'Home and kitchen', 'Clay Tawa', 540, 10, 2, '25 cm', 'An unglazed clay tawa for rotis and dosas.', 0],
+  ['Handloom Nook', 'Home and kitchen', 'Cotton Apron', 349, 20, 4, 'Free size', 'A block-printed cotton apron with a front pocket.', 1],
+  ['Mithila Rang', 'Home decor', 'Madhubani Wall Plate', 899, 8, 2, '30 cm', 'A wooden wall plate painted with a tree of life.', 1],
+  ['Terracotta Corner', 'Home decor', 'Terracotta Wind Chime', 450, 12, 3, '50 cm', 'Clay bells that ring softly in the breeze.', 1],
+  ['Woolly Hook Studio', 'Home decor', 'Crochet Cushion Cover', 599, 15, 3, '40 x 40 cm', 'A crochet cover in cotton yarn.', 1],
+  ['Bagru Block Prints', 'Home decor', 'Block-printed Cotton Table Runner', 699, 12, 3, '150 cm', 'A table runner with a Bagru floral print.', 1],
+  ['Chooda Lane', 'Jewellery', 'Oxidised Silver Jhumkas', 349, 25, 5, '1 pair', 'Oxidised jhumkas with small ghungroos.', 1],
+  ['Mithila Rang', 'Jewellery', 'Madhubani Painted Pendant', 299, 20, 4, '45 cm chain', 'A wooden pendant painted with a Madhubani fish.', 1],
+  ['Chooda Lane', 'Jewellery', 'Kundan Maang Tikka', 599, 12, 3, '1 piece', 'A kundan maang tikka for weddings and festivals.', 1],
+  ['Terracotta Corner', 'Jewellery', 'Terracotta Jhumka Earrings', 249, 20, 4, '1 pair', 'Light clay jhumkas painted by hand.', 1],
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Kashmiri Red Chilli Powder', 160, 30, 6, '200 g', 'Bright and mild chilli powder for colour.', 0],
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Coriander Powder', 90, 40, 8, '200 g', 'Stone-ground coriander seeds.', 0],
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Black Pepper Whole', 240, 25, 5, '100 g', 'Bold whole pepper from Kerala farms.', 0],
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Green Cardamom', 340, 20, 4, '50 g', 'Fragrant green cardamom pods.', 1],
+  ['Thekua Ghar', 'Pantry and spices', 'Panch Phoron', 90, 30, 6, '100 g', 'A Bihari five-seed tempering mix.', 0],
+  ['Chilli Lane Pantry', 'Pantry and spices', 'Hing Powder', 190, 25, 5, '50 g', 'Strong asafoetida for dal and sabzi.', 0],
+  ['Woolly Hook Studio', 'Pet care', 'Crochet Pet Toy Ball', 199, 25, 5, '1 ball', 'A soft crochet ball with a squeaker.', 0],
+  ['Handloom Nook', 'Pet care', 'Cotton Pet Collar', 249, 20, 4, 'Sizes S to L', 'A padded cotton collar with a steel buckle.', 0],
+  ['Terracotta Corner', 'Pet care', 'Clay Pet Food Bowl', 299, 20, 4, '15 cm', 'A heavy clay bowl that does not tip over.', 0],
+  ['Neem Leaf Naturals', 'Pet care', 'Neem Pet Shampoo', 299, 20, 4, '200 ml', 'A mild neem shampoo for dogs and cats.', 0],
+  ['Handloom Nook', 'Pet care', 'Handwoven Pet Blanket', 549, 12, 3, '70 x 90 cm', 'A soft, washable blanket for a pet bed or sofa.', 0],
+  ['Woolly Hook Studio', 'Pet care', 'Crochet Cat Toy Mice', 249, 20, 4, 'Set of 3', 'Small crochet mice filled with catnip.', 0],
+  ['Green Thumb Nursery', 'Plants and garden', 'Money Plant in Ceramic Pot', 349, 20, 4, 'Pot 12 cm', 'An easy indoor money plant in a white pot.', 1],
+  ['Green Thumb Nursery', 'Plants and garden', 'Snake Plant', 449, 15, 3, 'Pot 15 cm', 'A hardy plant that cleans indoor air.', 1],
+  ['Green Thumb Nursery', 'Plants and garden', 'Tulsi Plant', 199, 25, 5, 'Pot 12 cm', 'A healthy holy basil plant for your courtyard.', 1],
+  ['Green Thumb Nursery', 'Plants and garden', 'Vegetable Seeds Kit', 299, 30, 6, '10 varieties', 'Tomato, chilli, spinach and more for a kitchen garden.', 1],
+  ['Green Thumb Nursery', 'Plants and garden', 'Organic Vermicompost', 249, 30, 6, '5 kg', 'Rich compost for pots and garden beds.', 0],
+  ['Green Thumb Nursery', 'Plants and garden', 'Garden Tool Set', 499, 15, 3, 'Set of 3', 'A trowel, a rake and a weeder with wooden handles.', 1],
+  ['Thekua Ghar', 'Snacks and sweets', 'Makhana Roasted Peri Peri', 220, 30, 6, '100 g', 'Crunchy fox nuts roasted with a peri peri spice.', 0],
+  ['Thekua Ghar', 'Snacks and sweets', 'Litti Chokha Ready Mix', 240, 25, 5, 'Serves 4', 'Sattu filling and spices for homemade litti.', 0],
+  ['Mithila Rang', 'Stationery and prints', 'Handmade Paper Diary', 349, 25, 5, 'A5, 160 pages', 'A diary of handmade paper with a printed cover.', 1],
+  ['Handloom Nook', 'Stationery and prints', 'Fabric Pencil Pouch', 199, 25, 5, '1 pouch', 'A zip pouch in block-printed cotton.', 0],
+  ['Mithila Rang', 'Stationery and prints', 'Madhubani Art Postcards', 199, 30, 6, 'Set of 10', 'Postcards printed from original Madhubani paintings.', 1],
+  ['Mithila Rang', 'Stationery and prints', 'Seed Paper Notebook', 249, 20, 4, 'A6, 80 pages', 'A notebook whose cover can be planted to grow flowers.', 1],
+  ['Chilli Lane Pantry', 'Tea and coffee', 'Darjeeling Leaf Tea', 420, 20, 4, '100 g', 'A light first-flush Darjeeling leaf tea.', 1],
+  ['Chilli Lane Pantry', 'Tea and coffee', 'Assam CTC Tea', 260, 30, 6, '500 g', 'Strong Assam CTC for a perfect cup of chai.', 0],
+  ['Chilli Lane Pantry', 'Tea and coffee', 'Kashmiri Kahwa', 320, 20, 4, '100 g', 'Green tea with saffron, cardamom and almonds.', 1],
+  ['Chilli Lane Pantry', 'Tea and coffee', 'Coorg Coffee Beans', 450, 15, 3, '250 g', 'Medium-roast arabica beans from Coorg.', 0],
+  ['Thekua Ghar', 'Tea and coffee', 'Lemongrass Herbal Tea', 220, 25, 5, '100 g', 'Caffeine-free lemongrass and ginger tea.', 0],
+  ['Terracotta Corner', 'Tea and coffee', 'Clay Kulhad Set', 299, 20, 4, 'Set of 6', 'Small clay cups that give chai an earthy taste.', 1],
+  ['Woolly Hook Studio', 'Toys and games', 'Crochet Teddy Bear', 599, 12, 3, '25 cm', 'A soft cotton crochet teddy.', 1],
+  ['Terracotta Corner', 'Toys and games', 'Wooden Spinning Top Lattu', 149, 30, 6, 'Set of 2', 'Classic wooden lattus with a cord.', 1],
+  ['Mithila Rang', 'Toys and games', 'Wooden Pallanguzhi Board', 899, 8, 2, '1 board', 'A folding board for the traditional counting game.', 1],
+  ['Woolly Hook Studio', 'Toys and games', 'Crochet Finger Puppets', 349, 15, 3, 'Set of 5', 'Animal finger puppets for story time.', 1],
+  ['Terracotta Corner', 'Toys and games', 'Wooden Rattle Toy', 249, 20, 4, '1 piece', 'A smooth wooden rattle with natural colours.', 1],
+  ['Mithila Rang', 'Toys and games', 'Snakes and Ladders Cloth Board', 499, 12, 3, '60 x 60 cm', 'A hand-painted cloth board with wooden counters.', 1],
 ];
 async function addMakerShops() {
   const { hashPassword } = require('./auth');
@@ -727,16 +839,17 @@ async function addMakerShops() {
           shop.email, hashPassword(shop.password), id, nowIso());
       }
     }
-    for (const [shopName, category, name, price, stock, low, size, description, giftable] of MAKER_PRODUCTS) {
-      if (shopName !== shop.shop_name) continue;
-      const categoryRow = await db.get('SELECT id FROM categories WHERE name = ?', category);
-      if (!categoryRow || await db.get('SELECT 1 FROM products WHERE name = ? AND seller_id = ?', name, seller.id)) continue;
-      await db.run(`
-        INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted,
-                              created_at, giftable, size_label)
-        VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 0, ?, ?, ?)`,
-      seller.id, categoryRow.id, name, description, rupees(price), stock, low, nowIso(), giftable, size);
-    }
+  }
+  // The products, for these shops and the first sample shops alike (each added once, never twice).
+  for (const [shopName, category, name, price, stock, low, size, description, giftable] of MAKER_PRODUCTS) {
+    const seller = await db.get('SELECT id FROM sellers WHERE shop_name = ?', shopName);
+    const categoryRow = await db.get('SELECT id FROM categories WHERE name = ?', category);
+    if (!seller || !categoryRow || await db.get('SELECT 1 FROM products WHERE name = ? AND seller_id = ?', name, seller.id)) continue;
+    await db.run(`
+      INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted,
+                            created_at, giftable, size_label)
+      VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 0, ?, ?, ?)`,
+    seller.id, categoryRow.id, name, description, rupees(price), stock, low, nowIso(), giftable, size);
   }
 }
 
@@ -755,6 +868,9 @@ async function addDefaultSeasons() {
   const year = new Date().getFullYear();
   await db.run("INSERT OR IGNORE INTO seasons (key, name, starts_at, ends_at, enabled) VALUES ('christmas', 'Christmas', ?, ?, 1)",
     `${year}-12-01 00:00`, `${year}-12-26 23:59`);
+  // Winter: a frosty, festive look from mid-November to the end of February (Christmas wins inside its own dates).
+  await db.run("INSERT OR IGNORE INTO seasons (key, name, starts_at, ends_at, enabled) VALUES ('winter', 'Winter', ?, ?, 1)",
+    `${year}-11-15 00:00`, `${year + 1}-02-28 23:59`);
 }
 
 // Settings the app needs. Added only when missing, so a change the admin makes is never overwritten.
