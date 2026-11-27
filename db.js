@@ -20,6 +20,8 @@ pg.types.setTypeParser(16, (value) => (value === 't' ? 1 : 0)); // boolean
 const LOCAL_DIR = process.env.DB_DIR || path.join(__dirname, 'pgdata'); // the laptop's own database folder
 const LOCAL_PORT = Number(process.env.DB_PORT) || 54329;
 const LOCAL_URL = `postgres://bazaar:bazaar-local@127.0.0.1:${LOCAL_PORT}/bazaar`;
+// Live, the address comes from DATABASE_URL, or from SUPABASE_DATABASE_URL, which Netlify's Supabase extension sets.
+if (!process.env.DATABASE_URL && process.env.SUPABASE_DATABASE_URL) process.env.DATABASE_URL = process.env.SUPABASE_DATABASE_URL;
 const IS_LOCAL = !process.env.DATABASE_URL;
 const DB_LABEL = IS_LOCAL ? `the local database in ${LOCAL_DIR}` : 'the database in DATABASE_URL';
 
