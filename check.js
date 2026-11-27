@@ -50,6 +50,7 @@ function deleteTestDatabase() {
 async function openTestDatabase() {
   process.env.DB_DIR = TEST_DB_DIR;
   process.env.DB_PORT = String(TEST_DB_PORT);
+  process.env.SAMPLE_PHOTOS_PER_START = '1000'; // the test copy fills every sample photo at once
   delete process.env.DATABASE_URL;
   const database = require('./db');
   ({ db, DEMO_ACCOUNTS } = database);

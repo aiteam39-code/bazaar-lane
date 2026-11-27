@@ -938,11 +938,14 @@ async function addSamplePhotos() {
   if (!fs.existsSync(SAMPLE_PHOTOS_DIR)) return;
   const files = new Set(fs.readdirSync(SAMPLE_PHOTOS_DIR));
   const targets = [['category', 'categories', 'name'], ['promo', 'promo_cards', 'title'], ['product', 'products', 'name']];
+  let left = Number(process.env.SAMPLE_PHOTOS_PER_START) || 25; // a few at a time, so a live start-up stays quick
   for (const [kind, table, nameColumn] of targets) {
     const rows = await db.all(`SELECT id, ${nameColumn} AS name FROM ${table} WHERE photo IS NULL OR photo = ''`);
     for (const row of rows) {
       const file = `${kind}-${photoSlug(row.name)}.jpg`;
       if (!files.has(file)) continue;
+      if (left <= 0) return;
+      left -= 1;
       const newName = crypto.randomBytes(16).toString('hex') + '.jpg';
       await savePhotoBytes(newName, 'image/jpeg', fs.readFileSync(path.join(SAMPLE_PHOTOS_DIR, file)));
       await db.run(`UPDATE ${table} SET photo = ? WHERE id = ?`, newName, row.id);
