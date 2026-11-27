@@ -419,7 +419,7 @@ async function runChecks() {
     expect(firstFour.length === 4 && new Set(firstFour).size === 4, `the first 4 categories should have 4 different rates, found ${firstFour}`);
     expect((await count('SELECT COUNT(*) AS n FROM categories')) === 21, `there should be 21 categories, found ${await count('SELECT COUNT(*) AS n FROM categories')}`);
     const products = await count('SELECT COUNT(*) AS n FROM products');
-    expect(products === 181, `there should be 18 + 34 + 129 = 181 sample products, found ${products}`);
+    expect(products === 193, `there should be 18 + 34 + 141 = 193 sample products, found ${products}`);
     const empty = (await db.all(`SELECT name FROM categories WHERE NOT EXISTS (SELECT 1 FROM products JOIN sellers ON sellers.id = products.seller_id
       WHERE products.category_id = categories.id AND products.active = 1 AND products.stock > 0 AND sellers.status = 'active')`)).map((r) => r.name);
     expect(empty.length === 0, `no category may be empty, these are: ${empty.join(', ')}`);

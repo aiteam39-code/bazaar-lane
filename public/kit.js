@@ -299,7 +299,7 @@ function buildCustomerHeader(host) {
   sell.href = '/sell';
   const orders = make('a', '', 'My orders');
   orders.href = '/orders.html';
-  nav.append(menu, sell, orders);
+  nav.append(menu, sell, orders, sideMenuButton());
 
   bar.append(brandBox, search, right, nav);
   host.replaceChildren(bar);
@@ -386,16 +386,55 @@ const FOOTER_LINKS = [
   ['Terms', '/terms'], ['Privacy', '/privacy'], ['Refunds and returns', '/refunds'], ['Shipping', '/shipping'],
   ['Seller guidelines', '/seller-guidelines'], ['Find my orders', '/find-my-orders.html'], ['Seller or admin log in', '/login.html'],
 ];
+// The footer: one quiet line. Every help and policy link lives in the side menu (sideMenuButton).
 function buildCustomerFooter(host) {
-  const nav = make('nav', 'footer-links');
-  nav.setAttribute('aria-label', 'Help and policies');
+  const line = make('p', 'footer-line', `${siteName()} · handmade by independent makers`);
+  host.replaceChildren(line);
+}
+
+// "Menu": a button in the header that slides in a side panel with every help and policy link, the newsletter, and the
+// Light/Dark and sound switches. Escape, the close button or a click outside closes it; focus goes back to the button.
+function sideMenuButton() {
+  const button = make('button', 'menu-button', 'Menu');
+  button.type = 'button';
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.setAttribute('aria-expanded', 'false');
+  button.addEventListener('click', () => openSideMenu(button));
+  return button;
+}
+
+function openSideMenu(button) {
+  const shade = make('div', 'side-shade');
+  const panel = make('aside', 'side-menu');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-label', 'Menu');
+  const close = make('button', 'side-close', 'Close');
+  close.type = 'button';
+  const list = make('ul', 'side-links');
   for (const [text, address] of FOOTER_LINKS) {
+    const item = make('li');
     const link = make('a', '', text);
     link.href = address;
-    nav.append(link);
+    item.append(link);
+    list.append(item);
   }
-  host.replaceChildren(nav);
-  if (typeof buildFooterExtras === 'function') buildFooterExtras(host); // the newsletter and theme switch (sector 9)
+  panel.append(close, make('p', 'side-title', 'Help and information'), list);
+  if (typeof buildFooterExtras === 'function') buildFooterExtras(panel); // the newsletter, theme and sound
+  const shut = () => {
+    shade.remove();
+    panel.remove();
+    document.removeEventListener('keydown', onKey);
+    button.setAttribute('aria-expanded', 'false');
+    button.focus();
+  };
+  const onKey = (event) => { if (event.key === 'Escape') shut(); };
+  close.addEventListener('click', shut);
+  shade.addEventListener('click', shut);
+  document.addEventListener('keydown', onKey);
+  document.body.append(shade, panel);
+  button.setAttribute('aria-expanded', 'true');
+  close.focus();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

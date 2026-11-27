@@ -64,3 +64,9 @@ html[data-season="winter"] .site-header[data-customer-header] .brand::before {
 /* The home banner and section headings pick up the cold colours. */
 html[data-season="winter"] .home-banner { background: linear-gradient(135deg, #e4edf6 0%, #d6e8f2 60%, #fbe3e7 100%); }
 html[data-season="winter"][data-theme="night"] .home-banner { background: linear-gradient(135deg, #12223a 0%, #16344a 60%, #3a1820 100%); }
+
+/* The snowfall canvas: over the page, never in the way of a click. */
+.winter-snow { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
+html[data-season="winter"] .winter-row { margin: var(--space-5) 0; }
+html[data-season="winter"] .snow-switch { display: block; margin: var(--space-3) auto 0; }
+@media (prefers-reduced-motion: reduce) { .winter-snow { display: none; } }

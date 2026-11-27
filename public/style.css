@@ -765,3 +765,19 @@ legend { font: var(--text-type-label); padding: 0 var(--space-1); }
 .chip-strip { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: var(--space-2); padding-bottom: var(--space-2); scrollbar-width: none; scroll-snap-type: x proximity; }
 .chip-strip::-webkit-scrollbar { display: none; }
 .chip-strip .chip { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+
+/* The side menu (help and policy links, newsletter, theme and sound) and the one-line footer. */
+.menu-button { min-height: 44px; padding: var(--space-2) var(--space-4); background: transparent; color: inherit; border: 1px solid currentColor; }
+.side-shade { position: fixed; inset: 0; z-index: 60; background: var(--inverse); opacity: 0.4; }
+.side-menu { position: fixed; top: 0; right: 0; bottom: 0; z-index: 61; width: min(360px, 88vw); overflow-y: auto; padding: var(--space-5);
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-float); display: flex; flex-direction: column; gap: var(--space-3);
+  animation: side-in var(--dur-base) var(--ease-out); }
+@keyframes side-in { from { transform: translateX(100%); } to { transform: none; } }
+.side-close { align-self: flex-end; }
+.side-title { font: var(--text-type-label); color: var(--ink-muted); margin: 0; }
+.side-links { list-style: none; margin: 0; padding: 0; display: grid; }
+.side-links a { display: flex; align-items: center; min-height: 44px; padding: 0 var(--space-2); border-radius: var(--radius-sm); color: var(--ink); text-decoration: none; font: var(--text-type-body); }
+.side-links a:hover { background: var(--surface-sunk); }
+.side-menu .footer-extras { display: grid; gap: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-4); }
+.footer-line { max-width: 1120px; margin: 0 auto; text-align: center; color: var(--ink-muted); font: var(--text-type-caption); }
+@media (prefers-reduced-motion: reduce) { .side-menu { animation: none; } }
