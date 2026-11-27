@@ -82,3 +82,20 @@ html[data-season="winter"] .snow-switch { display: block; margin: var(--space-3)
 .christmas-tile:hover .christmas-tile-photo { transform: translateY(-3px); }
 @media (min-width: 800px) { .christmas-tile { grid-template-columns: 1.2fr 1fr; } }
 @media (prefers-reduced-motion: reduce) { .christmas-tile:hover .christmas-tile-photo { transform: none; } }
+
+/* Santa's sleigh: glides across the top of the page, behind nothing important, never takes a click. */
+.winter-santa { position: fixed; top: 96px; left: 0; z-index: 51; pointer-events: none; animation: santa-fly 9s linear forwards; }
+@keyframes santa-fly {
+  from { transform: translate(-180px, 0); }
+  50% { transform: translate(50vw, -18px); }
+  to { transform: translate(calc(100vw + 20px), 6px); }
+}
+@media (prefers-reduced-motion: reduce) { .winter-santa { display: none; } }
+
+/* Baubles hanging under the header, swinging gently; they never take a click. */
+.winter-ornaments { position: absolute; left: 0; right: 0; top: 100%; height: 0; pointer-events: none; }
+.winter-bauble { position: absolute; left: var(--left); top: 0; transform-origin: 13px 0; animation: bauble-swing 3.2s ease-in-out var(--delay) infinite alternate; }
+.winter-bauble svg { display: block; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25)); }
+@keyframes bauble-swing { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@media (prefers-reduced-motion: reduce) { .winter-bauble { animation: none; } }
+@media (max-width: 640px) { .winter-bauble:nth-child(n+6) { display: none; } }
