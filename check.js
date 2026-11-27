@@ -410,14 +410,14 @@ async function runChecks() {
   await check('DATA', 'Sample data: 1 admin, 3 active shops with Chilli Lane Pantry, 1 pending, the first 4 categories with different rates plus 17 more for the home page, 18 + 34 sample products, 2+ LOW, 1 switched off, 10% default, COD on', async () => {
     expect((await count("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'")) === 1, 'there should be exactly 1 admin');
     const active = (await db.all("SELECT shop_name FROM sellers WHERE status = 'active'")).map((row) => row.shop_name);
-    expect(active.length === 3, `there should be 3 active shops, found ${active.length}`);
+    expect(active.length === 8, `there should be 3 + 5 maker shops = 8 active shops, found ${active.length}`);
     expect(active.includes('Chilli Lane Pantry'), 'Chilli Lane Pantry should be one of the active shops');
     expect((await count("SELECT COUNT(*) AS n FROM sellers WHERE status = 'pending'")) === 1, 'there should be 1 pending shop');
     const firstFour = (await db.all("SELECT commission_bps FROM categories WHERE name IN ('Food and spices', 'Home and kitchen', 'Clothing', 'Gifts and crafts')")).map((row) => row.commission_bps);
     expect(firstFour.length === 4 && new Set(firstFour).size === 4, `the first 4 categories should have 4 different rates, found ${firstFour}`);
     expect((await count('SELECT COUNT(*) AS n FROM categories')) === 21, `there should be 21 categories, found ${await count('SELECT COUNT(*) AS n FROM categories')}`);
     const products = await count('SELECT COUNT(*) AS n FROM products');
-    expect(products === 52, `there should be 18 + 34 = 52 sample products, found ${products}`);
+    expect(products === 75, `there should be 18 + 34 + 23 = 75 sample products, found ${products}`);
     const empty = (await db.all(`SELECT name FROM categories WHERE NOT EXISTS (SELECT 1 FROM products JOIN sellers ON sellers.id = products.seller_id
       WHERE products.category_id = categories.id AND products.active = 1 AND products.stock > 0 AND sellers.status = 'active')`)).map((r) => r.name);
     expect(empty.length === 0, `no category may be empty, these are: ${empty.join(', ')}`);

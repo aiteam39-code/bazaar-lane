@@ -370,6 +370,8 @@ Live with Supabase and Netlify (2026-11-25, the owner asked for it):
 - Supabase: project bazaar-lane-us (us-east-2, free); the first one, bazaar-lane in Mumbai, was empty and is paused (the owner may delete it in the dashboard). Row-level security is on for every table.
 - check.js runs its own Postgres (port 54351, a temp folder) and starts each app copy against it; npm run backup writes JSON. 76 of 76 pass.
 
+More makers (2026-11-27, the owner asked for products like their madebyher.in shop): db.js addMakerShops() adds, once, five active sample shops with our own names and words (Thekua Ghar, Aurangabad; Mithila Rang, Madhubani; Woolly Hook Studio, Veraval; Chooda Lane, Aurangabad; Bagru Block Prints, Jaipur), each with a TEST seller login (<name>@bazaarlane.test, see MAKER_SHOPS), and 23 products (thekua, nimki, khaja, sattu, tilkut, Madhubani coasters, tray, painting and cards, crochet flowers, bags, booties, earrings, keychain and mat, bridal chooda, a Karwa Chauth thali, Bagru sarees and a dupatta). No brand-name products and nothing copied from the other site's text or photos; photos come when the owner sends them. 75 products in all; DATA counts 8 active shops. 76 of 76 pass.
+
 Decisions made in sector 3:
 - The commission rate copied into a seller order: the shop's own rate if set, else the rate of the shop's category, which is the category most of the shop's (not deleted) products are in (on a tie, the lower rate), else the default. Chilli Lane Pantry gets Food and spices 8%, Terracotta Corner its own 9%, Handloom Nook Clothing 12%. Commission is on the items only (not shipping).
 - Free shipping only when a shop's items total is MORE than its limit (exactly Rs 499 pays the Rs 40; Rs 499.01 ships free).

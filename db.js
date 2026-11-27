@@ -665,6 +665,81 @@ async function addMoreSampleProducts(categoryNames) {
   }
 }
 
+// More makers (added 2026-11-27): five women-run shops in the style the owner asked for, with our own names and words
+// (no brand-name products). Each gets a seller login (TEST passwords, see DEMO_ACCOUNTS) and its products, added once.
+const MAKER_SHOPS = [
+  { shop_name: 'Thekua Ghar', slug: 'thekua-ghar', city: 'Aurangabad', dispatch_days: 2, return_days: 0, phone: '9000000201',
+    description: 'Festive Bihari sweets and snacks, fried in pure desi ghee in a home kitchen.', shipping_fee: 4000, free_shipping_over: 59900,
+    email: 'thekua@bazaarlane.test', password: 'thekua-test-2026' },
+  { shop_name: 'Mithila Rang', slug: 'mithila-rang', city: 'Madhubani', dispatch_days: 4, return_days: 7, phone: '9000000202',
+    description: 'Hand-painted Madhubani art on wood, paper and cloth, by women artists from Mithila.', shipping_fee: 8000, free_shipping_over: 99900,
+    email: 'mithila@bazaarlane.test', password: 'mithila-test-2026' },
+  { shop_name: 'Woolly Hook Studio', slug: 'woolly-hook-studio', city: 'Veraval', dispatch_days: 3, return_days: 7, phone: '9000000203',
+    description: 'Crochet flowers, bags and baby wear, hooked by hand one stitch at a time.', shipping_fee: 5000, free_shipping_over: 69900,
+    email: 'crochet@bazaarlane.test', password: 'crochet-test-2026' },
+  { shop_name: 'Chooda Lane', slug: 'chooda-lane', city: 'Aurangabad', dispatch_days: 3, return_days: 7, phone: '9000000204',
+    description: 'Bridal chooda, latkans and festive puja sets, finished by hand.', shipping_fee: 6000, free_shipping_over: 149900,
+    email: 'chooda@bazaarlane.test', password: 'chooda-test-2026' },
+  { shop_name: 'Bagru Block Prints', slug: 'bagru-block-prints', city: 'Jaipur', dispatch_days: 3, return_days: 10, phone: '9000000205',
+    description: 'Hand-block printed mulmul sarees and dupattas in natural dyes.', shipping_fee: 0, free_shipping_over: null,
+    email: 'bagru@bazaarlane.test', password: 'bagru-test-2026' },
+];
+// [shop, category, name, price in rupees, stock, low-stock level, size, description, giftable]
+const MAKER_PRODUCTS = [
+  ['Thekua Ghar', 'Snacks and sweets', 'Desi Ghee Thekua', 340, 40, 8, '500 g', 'Crisp wheat and jaggery thekua fried in pure desi ghee, the Chhath way.', 1],
+  ['Thekua Ghar', 'Snacks and sweets', 'Coconut Ghee Thekua', 390, 30, 6, '500 g', 'Thekua with grated coconut and fennel, fried in desi ghee.', 1],
+  ['Thekua Ghar', 'Snacks and sweets', 'Salted Nimki', 180, 40, 8, '400 g', 'Flaky diamond-cut nimki with ajwain, a tea-time favourite.', 0],
+  ['Thekua Ghar', 'Snacks and sweets', 'Khaja Layered Sweet', 260, 25, 5, '400 g', 'Many-layered crisp khaja dipped in light sugar syrup.', 1],
+  ['Thekua Ghar', 'Pantry and spices', 'Roasted Sattu Flour', 160, 50, 10, '1 kg', 'Stone-ground roasted gram flour for sattu drinks and litti.', 0],
+  ['Thekua Ghar', 'Snacks and sweets', 'Sesame Tilkut', 280, 30, 6, '500 g', 'Pounded sesame and jaggery tilkut, made in winter batches.', 1],
+  ['Mithila Rang', 'Home decor', 'Madhubani Fish Coaster Set', 799, 15, 3, 'Set of 6 with stand', 'Six wooden coasters hand-painted with Madhubani fish, in a matching stand.', 1],
+  ['Mithila Rang', 'Home decor', 'Madhubani Desk Organiser Tray', 1690, 6, 2, 'Tray and 3 holders', 'A painted wooden tray with pen and card holders for a desk.', 1],
+  ['Mithila Rang', 'Stationery and prints', 'Madhubani Peacock Painting', 1450, 8, 2, 'A3 on handmade paper', 'An original peacock painting in natural colours on handmade paper.', 1],
+  ['Mithila Rang', 'Stationery and prints', 'Madhubani Greeting Cards', 260, 30, 6, 'Set of 6', 'Hand-painted folded cards with envelopes.', 1],
+  ['Woolly Hook Studio', 'Gifts and crafts', 'Crochet Rose Bouquet', 340, 20, 4, '5 roses', 'Five crochet roses with leaves that never wilt.', 1],
+  ['Woolly Hook Studio', 'Bags and accessories', 'Crochet Rose Potli Bag', 689, 12, 3, '1 bag', 'A small drawstring potli bag with a crochet rose on the front.', 1],
+  ['Woolly Hook Studio', 'Bags and accessories', 'Crochet Rose Handbag with Pearl Handle', 890, 8, 2, '1 bag', 'A structured crochet bag covered in 3D roses, with a pearl handle.', 1],
+  ['Woolly Hook Studio', 'Baby care', 'Crochet Baby Booties and Cap', 290, 15, 3, '0 to 6 months', 'Soft cotton booties and a matching cap.', 1],
+  ['Woolly Hook Studio', 'Jewellery', 'Crochet Flower Earrings', 190, 25, 5, '1 pair', 'Light crochet flower drops on hypoallergenic hooks.', 1],
+  ['Woolly Hook Studio', 'Gifts and crafts', 'Crochet Daisy Keychain', 190, 30, 6, '1 piece', 'A cheerful crochet daisy on a steel key ring.', 1],
+  ['Woolly Hook Studio', 'Home decor', 'Crochet Table Mat', 289, 20, 4, '30 cm round', 'A round crochet mat for a puja table or a side table.', 0],
+  ['Chooda Lane', 'Jewellery', 'Maroon Velvet Bridal Chooda', 2539, 10, 2, 'Size 2.4 and 2.6', 'Maroon velvet chooda with stone work and golden hanging latkans.', 1],
+  ['Chooda Lane', 'Jewellery', 'Emerald and Maroon Chooda Set with Latkans', 5939, 5, 1, 'Size 2.4 and 2.6', 'A full bridal chooda set in emerald and maroon with jhumki latkans.', 1],
+  ['Chooda Lane', 'Festive and puja', 'Karwa Chauth Thali Set', 2939, 8, 2, 'Thali with 7 pieces', 'A decorated thali with karwa, diya, sieve and small bowls.', 1],
+  ['Bagru Block Prints', 'Clothing', 'Red Hand-block Mulmul Saree', 1539, 10, 2, '5.5 m with blouse piece', 'A soft cotton mulmul saree hand-block printed in Bagru in red and black.', 1],
+  ['Bagru Block Prints', 'Clothing', 'Indigo Bagru Print Saree', 1239, 10, 2, '5.5 m with blouse piece', 'A mulmul cotton saree in indigo with hand-block prints in natural dyes.', 1],
+  ['Bagru Block Prints', 'Clothing', 'Block-printed Cotton Dupatta', 590, 20, 4, '2.25 m', 'A light cotton dupatta with a small Bagru motif all over.', 1],
+];
+async function addMakerShops() {
+  const { hashPassword } = require('./auth');
+  for (const shop of MAKER_SHOPS) {
+    let seller = await db.get('SELECT id FROM sellers WHERE slug = ?', shop.slug);
+    if (!seller) {
+      const id = (await db.run(`
+        INSERT INTO sellers (shop_name, slug, description, phone, status, shipping_fee, free_shipping_over, created_at, approved_at,
+                             city, dispatch_days, return_days)
+        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`,
+      shop.shop_name, shop.slug, shop.description, shop.phone, shop.shipping_fee, shop.free_shipping_over, nowIso(), nowIso(),
+      shop.city, shop.dispatch_days, shop.return_days)).lastInsertRowid;
+      seller = { id };
+      if (!(await db.get('SELECT 1 FROM users WHERE email = ?', shop.email))) {
+        await db.run("INSERT INTO users (email, password_hash, role, seller_id, created_at) VALUES (?, ?, 'seller', ?, ?)",
+          shop.email, hashPassword(shop.password), id, nowIso());
+      }
+    }
+    for (const [shopName, category, name, price, stock, low, size, description, giftable] of MAKER_PRODUCTS) {
+      if (shopName !== shop.shop_name) continue;
+      const categoryRow = await db.get('SELECT id FROM categories WHERE name = ?', category);
+      if (!categoryRow || await db.get('SELECT 1 FROM products WHERE name = ? AND seller_id = ?', name, seller.id)) continue;
+      await db.run(`
+        INSERT INTO products (seller_id, category_id, name, description, emoji, price, stock, low_stock_level, active, deleted,
+                              created_at, giftable, size_label)
+        VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, 0, ?, ?, ?)`,
+      seller.id, categoryRow.id, name, description, rupees(price), stock, low, nowIso(), giftable, size);
+    }
+  }
+}
+
 // The promo cards, added once (when there are none).
 async function addSamplePromoCards() {
   if ((await db.get('SELECT COUNT(*) AS n FROM promo_cards')).n > 0) return;
@@ -820,6 +895,7 @@ function ready() {
         await addSamplePromoCards();
         await addSampleShopDetails();
         const isNew = await fillSampleDataIfEmpty();
+        await addMakerShops();
         await addSamplePhotos();
         return isNew;
       });
