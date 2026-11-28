@@ -833,6 +833,17 @@ const MAKER_PRODUCTS = [
   ['Woolly Hook Studio', 'Toys and games', 'Crochet Finger Puppets', 349, 15, 3, 'Set of 5', 'Animal finger puppets for story time.', 1],
   ['Terracotta Corner', 'Toys and games', 'Wooden Rattle Toy', 249, 20, 4, '1 piece', 'A smooth wooden rattle with natural colours.', 1],
   ['Mithila Rang', 'Toys and games', 'Snakes and Ladders Cloth Board', 499, 12, 3, '60 x 60 cm', 'A hand-painted cloth board with wooden counters.', 1],
+  // Products added with the owner's own photo board (2026-11-28).
+  ['Chilli Lane Pantry', 'Food and spices', 'Hot Red Chilli Sauce', 180, 30, 6, '250 ml', 'A thin, fiery sauce of fresh red chillies and vinegar.', 0],
+  ['Chilli Lane Pantry', 'Food and spices', 'Crispy Chilli Oil', 240, 25, 5, '200 g', 'Crunchy chilli flakes and fried garlic in oil.', 1],
+  ['Terracotta Corner', 'Home and kitchen', 'Masala Dabba Spice Box', 899, 10, 2, '7 bowls', 'A round spice box with seven bowls and a small spoon.', 1],
+  ['Terracotta Corner', 'Home and kitchen', 'Terracotta Water Bottle', 450, 15, 3, '1 litre', 'A clay bottle that keeps water cool, with a cork lid.', 1],
+  ['Terracotta Corner', 'Home and kitchen', 'Clay Cooking Handi Set', 1199, 8, 2, 'Set of 3', 'Three unglazed clay pots for slow cooking, with a wooden spoon.', 0],
+  ['Terracotta Corner', 'Home decor', 'Terracotta Hanging Lamp', 1299, 8, 2, '30 cm tall', 'A cut-work clay lantern that throws patterns on the wall.', 1],
+  ['Handloom Nook', 'Clothing', 'Printed Cotton Stole', 549, 20, 4, '2 m', 'A light cotton stole with block-printed borders.', 1],
+  ['Thekua Ghar', 'Snacks and sweets', 'Kaju Katli and Laddoo Box', 799, 15, 3, '500 g', 'A festive tray of kaju katli, besan laddoo and barfi.', 1],
+  ['Mithila Rang', 'Home and kitchen', 'Hand-painted Wooden Spoons', 499, 15, 3, 'Set of 5', 'Wooden spoons painted with small flowers by hand.', 1],
+  ['Green Thumb Nursery', 'Plants and garden', 'Wooden Plant Stand', 1499, 6, 2, '3 tiers', 'A wooden stand with three tiers for pots indoors.', 0],
 ];
 async function addMakerShops() {
   const { hashPassword } = require('./auth');
@@ -874,6 +885,23 @@ async function addMakerShops() {
 
 // The Christmas tile's photo changed to a gift box with a red bow: done once (the settings row remembers it), so the
 // sample photo fills it again. A photo the admin uploads later is never touched.
+// The owner's photo board (2026-11-28): these products take its pictures instead of their old photos. Done once
+// (the settings row remembers it): their photo is cleared, so the sample photo of the same name fills it again.
+const BOARD_PHOTO_PRODUCTS = fs.existsSync(path.join(__dirname, 'sample-photos', 'board-products.txt'))
+  ? fs.readFileSync(path.join(__dirname, 'sample-photos', 'board-products.txt'), 'utf8').split('\n').map((line) => line.trim()).filter(Boolean)
+  : [];
+async function useBoardPhotos() {
+  if (await db.get("SELECT 1 FROM settings WHERE key = 'board_photos_v1'")) return;
+  for (const name of BOARD_PHOTO_PRODUCTS) {
+    const rows = await db.all("SELECT id, photo FROM products WHERE name = ? AND photo IS NOT NULL AND photo <> ''", name);
+    for (const row of rows) {
+      await db.run('UPDATE products SET photo = NULL WHERE id = ?', row.id);
+      await deletePhoto(row.photo);
+    }
+  }
+  await db.run("INSERT INTO settings (key, value) VALUES ('board_photos_v1', 'done')");
+}
+
 async function useNewChristmasTilePhoto() {
   if (await db.get("SELECT 1 FROM settings WHERE key = 'christmas_tile_photo_v2'")) return;
   await db.run("UPDATE categories SET photo = NULL WHERE name = 'Christmas'");
@@ -1043,6 +1071,7 @@ function ready() {
         const isNew = await fillSampleDataIfEmpty();
         await addMakerShops();
         await useNewChristmasTilePhoto();
+        await useBoardPhotos();
         await addSamplePhotos();
         return isNew;
       });

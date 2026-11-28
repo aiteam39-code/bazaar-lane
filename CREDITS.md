@@ -181,3 +181,7 @@ Product photos (Unsplash, free licence, downloaded 2026-11-27; each found by sea
 | product-terracotta-whistle-bird.jpg | https://images.unsplash.com/photo-1789097132234-831d8dd946fc |
 | product-wooden-pallanguzhi-board.jpg | https://images.unsplash.com/photo-1642056446796-8c7d1dcb630b |
 | product-wooden-spinning-top-lattu.jpg | https://images.unsplash.com/photo-1700161735948-ae9f18a76110 |
+
+## The owner's photo board (2026-11-28)
+
+130 product photos come from the owner's own Pinterest board "ai-hackathon" (kashvii8), chosen by the owner for this store. Each picture is used for one product only; the list of products is sample-photos/board-products.txt. Pictures showing brands (board games, cartoon plates, branded toys) or pet names were left out.

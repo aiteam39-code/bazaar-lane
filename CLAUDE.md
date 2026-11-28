@@ -387,3 +387,5 @@ To decide later:
 - The placeholder art for a product without a photo is picked from its id, so it is the same each time but not related to what the product is. Real photos are for the owner to add (the pack's photo step needs the owner's photo folder).
 - A seller can replace a photo but not remove it.
 - Two identical checkouts sent to the server at the same moment make two orders (the checkout page switches its button off after one press, so a person cannot do it by double-clicking). A guard against double orders could come with payments in sector 4.
+
+The owner's photo board (2026-11-28): 130 pictures from the owner's Pinterest board, cropped to 4:5, each used once (sample-photos/board-products.txt lists the products). db.js useBoardPhotos() clears those products' old photos once (settings board_photos_v1) so the board pictures fill in, 25 per start-up. 10 new products came with it (chilli sauce and oil, masala dabba, clay bottle, handi set, hanging lamp, stole, sweets box, painted spoons, plant stand): 203 products. 76 of 76 pass.
